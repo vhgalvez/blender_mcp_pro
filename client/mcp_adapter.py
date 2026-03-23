@@ -23,6 +23,30 @@ def configure_logging() -> logging.Logger:
 
 LOGGER = configure_logging()
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "un": 1,
+    "una": 1,
+    "uno": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+}
 SCENE_KEYWORDS = {
     "room",
     "bedroom",
@@ -249,27 +273,26 @@ class BlenderMCPAdapter:
             plan["environment"] = {"layout_type": "room", "collection_name": "MCP_Generated_Room"}
 
         prop_keywords = {
-            "chair": "chair",
-            "silla": "chair",
-            "table": "table",
-            "mesa": "table",
-            "desk": "table",
-            "escritorio": "table",
-            "crate": "crate",
-            "caja": "crate",
-            "weapon": "weapon",
-            "sword": "weapon",
-            "arma": "weapon",
-            "plane": "plane",
-            "airplane": "plane",
-            "avion": "plane",
-            "avión": "plane",
+            "chair": ["chair", "chairs", "silla", "sillas"],
+            "table": ["table", "tables", "mesa", "mesas", "desk", "desks", "escritorio", "escritorios"],
+            "crate": ["crate", "crates", "caja", "cajas"],
+            "weapon": ["weapon", "weapons", "sword", "swords", "arma", "armas"],
+            "plane": ["plane", "planes", "airplane", "airplanes", "avion", "aviones", "avión", "aviones"],
         }
         selected_props = []
-        for keyword, prop_type in prop_keywords.items():
-            if keyword in text and prop_type not in selected_props:
-                selected_props.append(prop_type)
-                plan["props"].append({"prop_type": prop_type, "collection_name": "MCP_Generated_Props"})
+        for prop_type, keywords in prop_keywords.items():
+            count = self._extract_prop_count(text, keywords)
+            if count < 1 or prop_type in selected_props:
+                continue
+            selected_props.append(prop_type)
+            for index in range(count):
+                plan["props"].append(
+                    {
+                        "prop_type": prop_type,
+                        "collection_name": "MCP_Generated_Props",
+                        "placement": self._default_prop_placement(prop_type, index, count, text),
+                    }
+                )
 
         if "bed" in text or "cama" in text:
             plan["primitives"].extend(
@@ -342,7 +365,29 @@ class BlenderMCPAdapter:
             steps.append({"tool": "apply_environment_materials", "result": self._call_backend("apply_environment_materials", {})})
 
         for prop in plan.get("props", []):
-            steps.append({"tool": "create_prop_blockout", "result": self._call_backend("create_prop_blockout", prop)})
+            backend_params = {key: value for key, value in prop.items() if key != "placement"}
+            create_result = self._call_backend("create_prop_blockout", backend_params)
+            steps.append({"tool": "create_prop_blockout", "result": create_result})
+
+            placement = prop.get("placement")
+            root_name = create_result.get("root")
+            if placement and root_name:
+                location = placement.get("location")
+                rotation = placement.get("rotation")
+                if location is not None:
+                    steps.append(
+                        {
+                            "tool": "move_object",
+                            "result": self._call_backend("move_object", {"name": root_name, "location": location}),
+                        }
+                    )
+                if rotation is not None:
+                    steps.append(
+                        {
+                            "tool": "rotate_object",
+                            "result": self._call_backend("rotate_object", {"name": root_name, "rotation": rotation}),
+                        }
+                    )
 
         if plan.get("props"):
             steps.append({"tool": "apply_prop_materials", "result": self._call_backend("apply_prop_materials", {"include_metal": False})})
@@ -370,6 +415,55 @@ class BlenderMCPAdapter:
         if generated.get("error"):
             return generated
         return self._apply_scene_plan({"plan": generated["plan"]})
+
+    def _extract_prop_count(self, text: str, keywords: list[str]) -> int:
+        for keyword in sorted(keywords, key=len, reverse=True):
+            if not re.search(rf"\b{re.escape(keyword)}\b", text):
+                continue
+
+            numeric_before = re.search(rf"\b(\d+)\s+{re.escape(keyword)}\b", text)
+            if numeric_before:
+                return max(1, int(numeric_before.group(1)))
+
+            numeric_after = re.search(rf"\b{re.escape(keyword)}\s+(\d+)\b", text)
+            if numeric_after:
+                return max(1, int(numeric_after.group(1)))
+
+            for word, value in NUMBER_WORDS.items():
+                if re.search(rf"\b{re.escape(word)}\s+{re.escape(keyword)}\b", text):
+                    return value
+                if re.search(rf"\b{re.escape(keyword)}\s+{re.escape(word)}\b", text):
+                    return value
+
+            return 1
+        return 0
+
+    def _default_prop_placement(self, prop_type: str, index: int, count: int, text: str) -> dict[str, Any] | None:
+        if prop_type == "table":
+            return {"location": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0]}
+
+        if prop_type == "chair" and ("table" in text or "mesa" in text or "desk" in text or "escritorio" in text):
+            placements = [
+                {"location": [0.0, -1.7, 0.0], "rotation": [0.0, 0.0, 0.0]},
+                {"location": [1.7, 0.0, 0.0], "rotation": [0.0, 0.0, 1.5708]},
+                {"location": [0.0, 1.7, 0.0], "rotation": [0.0, 0.0, 3.1416]},
+                {"location": [-1.7, 0.0, 0.0], "rotation": [0.0, 0.0, -1.5708]},
+            ]
+            if index < len(placements):
+                return placements[index]
+
+            side_index = index % len(placements)
+            ring = index // len(placements)
+            base = placements[side_index]
+            offset = 0.9 * ring
+            x, y, z = base["location"]
+            if side_index in {0, 2}:
+                x += -offset if side_index == 0 else offset
+            else:
+                y += offset if side_index == 1 else -offset
+            return {"location": [x, y, z], "rotation": base["rotation"]}
+
+        return None
 
     def _build_character_from_description(self, params: dict[str, Any]):
         description = str(params.get("description", "")).strip()
