@@ -130,7 +130,7 @@ class MCPStdioServer:
         if not tool_meta:
             return self._tool_error("unknown_tool", f"Unknown tool: {tool_name}")
 
-        if tool_meta["availability"] != "server":
+        if tool_meta["availability"] == "unavailable":
             return self._tool_error(
                 "tool_not_implemented",
                 tool_meta["description"],

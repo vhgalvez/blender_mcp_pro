@@ -15,6 +15,7 @@ The primary threats considered in the current implementation are:
 - accidental credential persistence inside `.blend` scene data
 
 The current implementation does not attempt to defend against a fully compromised local machine.
+The project intentionally does not expose unrestricted arbitrary Python execution to Copilot by default.
 
 ## Local-Only Guarantees
 
@@ -122,6 +123,20 @@ Medium risk:
   - creates named editable environment layout geometry in a dedicated collection
 - `apply_environment_materials`
   - creates and assigns simple environment materials
+- `create_primitive`
+  - creates controlled primitive geometry with validated parameters
+- `move_object`
+  - moves an existing object by explicit coordinates
+- `rotate_object`
+  - rotates an existing object by explicit Euler angles
+- `scale_object`
+  - scales an existing object by explicit factors
+- `apply_material`
+  - creates and assigns simple principled materials
+- `create_light`
+  - creates scene lighting objects with validated parameters
+- `set_camera`
+  - creates or updates a camera with validated parameters
 
 High risk:
 

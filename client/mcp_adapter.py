@@ -147,7 +147,7 @@ class BlenderMCPAdapter:
                 "crea un personaje punk",
                 "crear un personaje punk",
             ]
-        ):
+        ) or (("character" in text or "personaje" in text) and "punk" in text):
             return {"tool": "build_character_from_description", "params": {"description": original, "style": "stylized punk cartoon"}}
 
         if any(
@@ -188,7 +188,7 @@ class BlenderMCPAdapter:
                 "hazme una tienda",
                 "hazme una habitación",
             ]
-        ):
+        ) or any(keyword in text for keyword in ["bedroom", "dormitorio", "habitación", "habitacion", "room", "tienda", "shop"]):
             return {"tool": "build_scene_from_description", "params": {"description": original}}
 
         if any(

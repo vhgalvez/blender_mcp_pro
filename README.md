@@ -184,14 +184,29 @@ Responsabilidades:
 
 El bridge MCP stdio expone solo herramientas reales del servidor de Blender. No anuncia placeholders ni workflows locales como si fueran tools MCP.
 
-### Scene / Info
+### Primitive Scene Tools
 
 - `get_scene_info`
 - `get_object_info`
 - `get_viewport_screenshot`
+- `create_primitive`
+- `move_object`
+- `rotate_object`
+- `scale_object`
+- `apply_material`
+- `create_light`
+- `set_camera`
 - `get_telemetry_consent`
 
-### Character
+### Prop And Environment Tools
+
+- `create_prop_blockout`
+- `apply_prop_symmetry`
+- `apply_prop_materials`
+- `create_environment_layout`
+- `apply_environment_materials`
+
+### Character Tools
 
 - `load_character_references`
 - `clear_character_references`
@@ -203,17 +218,6 @@ El bridge MCP stdio expone solo herramientas reales del servidor de Blender. No 
 - `capture_character_review`
 - `compare_character_with_references`
 - `apply_character_proportion_fixes`
-
-### Props
-
-- `create_prop_blockout`
-- `apply_prop_symmetry`
-- `apply_prop_materials`
-
-### Environment / Layout
-
-- `create_environment_layout`
-- `apply_environment_materials`
 
 ### Assets / Integrations
 
@@ -235,11 +239,18 @@ El bridge MCP stdio expone solo herramientas reales del servidor de Blender. No 
 - `poll_hunyuan_job_status`
 - `import_generated_asset_hunyuan`
 
-Helpers locales de la CLI y del adaptador, útiles pero no expuestos como MCP tools:
+### High-Level Generative Tools
+
+Estas tools si se exponen por MCP, pero viven en el bridge y se implementan usando primitives seguras y comandos reales del servidor:
 
 - `create_character_from_references`
 - `review_and_fix_character`
 - `create_shop_scene`
+- `generate_scene_plan`
+- `apply_scene_plan`
+- `build_scene_from_description`
+- `build_character_from_description`
+- `import_asset`
 
 Placeholders no implementados y no expuestos por MCP:
 
@@ -251,8 +262,10 @@ Implementado hoy y disponible para Copilot a traves del bridge MCP:
 - backend local dentro de Blender con token auth
 - cliente TCP local reutilizable
 - bridge MCP stdio real para VS Code
-- creación de personajes estilizados guiada por referencias
+- primitivas seguras para escena, materiales, luces y camara
+- creación de personajes estilizados guiada por referencias o descripcion
 - blockouts de props e interiores
+- generación de planes de escena a partir de descripciones
 - revisión y ciclos iterativos de ajuste
 
 No implementado hoy:
@@ -288,6 +301,35 @@ Soporta:
 - ajustes iterativos de proporciones
 
 No afirma reconstrucción automática de imagen a malla final.
+
+---
+
+## Generative Workflow
+
+La capa generativa esta diseñada para que Copilot o un agente LLM no dependan solo de prompts hardcodeados.
+
+Flujo recomendado:
+
+1. `generate_scene_plan`
+2. `apply_scene_plan`
+
+Atajo completo:
+
+- `build_scene_from_description`
+- `build_character_from_description`
+
+Ejemplos de prompts:
+
+- `crea una habitación low poly con cama, escritorio y lámpara`
+- `hazme una tienda pequeña con mostrador y estanterías`
+- `create a stylized bedroom with sunset lighting`
+- `create a punk cartoon character with big head and thin limbs`
+
+Importante:
+
+- la capa generativa usa solo operaciones seguras ya implementadas
+- si una peticion no puede satisfacerse con las herramientas actuales, devuelve una limitacion estructurada
+- no ejecuta Python arbitrario
 
 ---
 
@@ -419,7 +461,7 @@ El backend real sigue siendo el add-on `blender_mcp_pro/` dentro de Blender:
 El directorio `client/` es un consumidor externo de ese backend:
 
 - `blender_client.py` habla el protocolo TCP actual
-- `mcp_adapter.py` alinea prompts y tools con los comandos reales del servidor
+- `mcp_adapter.py` alinea prompts y tools con los comandos reales del servidor y genera planes seguros de escena
 - `mcp_stdio_server.py` traduce MCP stdio a llamadas TCP autenticadas contra Blender
 - `agent_cli.py` ofrece una CLI práctica para workflows iterativos
 
