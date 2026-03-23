@@ -12,27 +12,20 @@ def help_payload():
     return {
         "commands": {
             "help": "Show CLI help.",
-            "tools": "List callable MCP tools, including safe workflow helpers.",
+            "tools": "List callable MCP tools, grouped around primitives and generative workflows.",
             "quit": "Exit the CLI.",
             "raw <tool_name> <json_params>": "Call a tool directly with JSON params.",
         },
         "prompt_examples": [
             "scene info",
             "info de escena",
-            "create a chair in Blender",
-            "crea una mesa",
-            "crea una silla en Blender",
-            "create punk character",
+            "create a stylized room with warm sunset lighting",
+            "crea una habitación low poly con cama y escritorio",
+            "hazme una tienda pequeña con mostrador",
+            "create a punk cartoon character",
             "crea un personaje punk",
             "review character",
             "revisa el personaje",
-            "fix proportions",
-            "arregla proporciones",
-            "create shop scene",
-            "create a stylized bedroom with sunset lighting",
-            "crea una habitación low poly con cama, escritorio y lámpara",
-            "create bedroom blockout",
-            "create street blockout",
         ],
     }
 
@@ -54,10 +47,11 @@ def main():
         {
             "callable_mcp_tools": callable_tools,
             "prompt_helpers": [
-                "create punk character",
+                "create a stylized room with warm sunset lighting",
+                "crea una habitación low poly con cama y escritorio",
+                "hazme una tienda pequeña con mostrador",
+                "create a punk cartoon character",
                 "crea un personaje punk",
-                "create shop scene",
-                "create a stylized bedroom with sunset lighting",
                 "review character",
                 "revisa el personaje",
             ],

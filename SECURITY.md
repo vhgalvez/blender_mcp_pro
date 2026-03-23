@@ -1,158 +1,118 @@
 # Security Notes
 
-## Threat Model
+## Security Model
 
-This add-on is designed for a trusted local Blender environment with a local MCP client on the same machine.
+Blender MCP Pro is designed for a local-first Blender workflow.
 
-The primary threats considered in the current implementation are:
+The backend security boundary is the Blender add-on in `blender_mcp_pro/`. The external `client/` bridge is not trusted to bypass backend restrictions; it must authenticate like any other client.
 
-- unauthenticated local client access
-- malformed or oversized protocol messages
-- arbitrary file writes through screenshot export
-- arbitrary local file reads through provider image inputs
-- arbitrary local file reads through character reference inputs
-- unsafe ZIP extraction from remote provider downloads
-- accidental credential persistence inside `.blend` scene data
+Core properties:
 
-The current implementation does not attempt to defend against a fully compromised local machine.
-The project intentionally does not expose unrestricted arbitrary Python execution to Copilot by default.
+- token authentication is mandatory
+- local-only networking is the default
+- optional LAN mode is allowlist-based
+- local file reads are restricted to configured safe roots
+- screenshot writes are restricted to the managed screenshot directory
+- remote archive extraction is hardened against traversal and symlink attacks
 
-## Local-Only Guarantees
+## Network Exposure
 
-- The server binds to `127.0.0.1` only.
-- `Local-Only Mode` is the default and safest mode.
-- In local-only mode, only loopback clients such as `127.0.0.1` and `::1` are accepted.
-- Disabling LAN whitelist mode returns the server to local-only behavior immediately.
+### Default Mode
 
-## LAN Whitelist Behavior
+- bind address: `127.0.0.1`
+- accepted clients: loopback only
+- auth token: still required
 
-- LAN access is optional and disabled by default.
-- When `Enable LAN Whitelist Mode` is enabled, the server binds for LAN access and still requires token authentication.
-- Only clients whose IP addresses match the configured allowlists may connect.
-- `Allowed IPs` accepts explicit comma-separated addresses such as `192.168.1.10,192.168.1.20`.
-- `Allowed Subnets` accepts comma-separated CIDR ranges such as `192.168.1.0/24,10.0.0.0/24`.
-- There is no open-access mode and no public-internet mode.
-- If LAN whitelist mode has no allowed IPs or subnets configured, the server will not start in that mode.
+### Optional LAN Whitelist Mode
 
-## Token Requirements
+- disabled by default
+- still requires token auth
+- requires at least one allowed IP or CIDR subnet
+- no public-internet mode exists
 
-- Every client must authenticate first with a shared auth token.
-- No command message is accepted before authentication succeeds.
-- Auth failures are audit-logged without logging the token itself.
-- The token is stored in add-on preferences, not scene properties.
-- The recommended VS Code setup loads client-side connection settings from `client/.env` via `.vscode/mcp.json` instead of hardcoding the token in workspace config.
+Do not expose this service through router forwarding, reverse proxies, or public tunnels.
+
+## Token Handling
+
+- The token is stored in Blender add-on preferences, not scene properties.
+- The recommended client-side storage is `client/.env`.
+- Do not commit real tokens to source control.
+- Rotate the token after temporary LAN sessions.
 
 ## File Access Restrictions
 
-- Screenshots are restricted to `~/BlenderMCP/screenshots`.
-- Character review screenshots use the same restricted screenshot directory.
-- Local file reads are restricted to configured safe roots.
-- The default safe root is `~/BlenderMCP/inputs`.
-- Additional safe roots can be configured in add-on preferences using the OS path separator.
-- Local file reads reject symlinks, unsupported extensions, and oversized files.
-- Character reference images use the same safe-root restrictions as provider image inputs.
-- ZIP extraction is centralized and hardened against traversal and symlink attacks.
+Local file reads are limited to configured safe roots.
 
-## Safe Usage Guidance
+Default safe root:
 
-- Prefer local-only mode unless you explicitly need another trusted machine on your LAN to connect.
-- If LAN whitelist mode is needed, use the narrowest possible explicit IP or CIDR entries.
-- Keep the auth token unique and rotate it after temporary LAN access sessions.
-- Disable LAN whitelist mode as soon as the remote session is finished.
-- Do not expose this server through router port forwarding, VPN auto-bridging, or public reverse proxies.
+- `~/BlenderMCP/inputs`
 
-## Protocol Restrictions
+Restrictions:
 
-- The transport is NDJSON only.
-- The production Copilot path is stdio MCP in `client/mcp_stdio_server.py`, which bridges into the authenticated TCP backend.
-- Every message must include a non-empty string request id.
-- Malformed JSON, invalid UTF-8, oversized messages, and unsupported fields are rejected with structured error codes.
-- Unknown commands and invalid params are rejected.
+- files only, not directories
+- no symlinks
+- extension allowlists
+- size limits
 
-## Command Risk Levels
+Screenshot output is limited to:
 
-Low risk:
+- `~/BlenderMCP/screenshots`
 
-- `get_scene_info`
-- `get_object_info`
-- `get_telemetry_consent`
-- `get_polyhaven_status`
-- `get_hyper3d_status`
-- `get_sketchfab_status`
-- `get_hunyuan3d_status`
-- `get_polyhaven_categories`
-- `search_polyhaven_assets`
-- `search_sketchfab_models`
-- `get_sketchfab_model_preview`
-- `poll_rodin_job_status`
-- `poll_hunyuan_job_status`
+## Bridge Behavior
 
-Medium risk:
+The main MCP entrypoint for VS Code is:
 
-- `get_viewport_screenshot`
-  - writes a file, but only inside the managed screenshot directory
-- `create_rodin_job`
-  - triggers outbound provider requests and may send user-supplied prompts or URLs
-- `create_hunyuan_job`
-  - can read a local image file, but only from configured safe roots
-- `load_character_references`
-  - can read local image files, but only from configured safe roots
-- `create_character_blockout`
-  - creates named scene geometry for a character base
-- `build_character_hair`
-  - creates editable stylized hair geometry
-- `build_character_face`
-  - creates editable stylized facial geometry and optional piercings
-- `apply_character_materials`
-  - creates and assigns predictable base materials to character geometry
-- `capture_character_review`
-  - captures review screenshots only into the managed screenshot directory
-- `compare_character_with_references`
-  - reads already loaded in-Blender reference images and produces heuristic correction data
-- `apply_character_proportion_fixes`
-  - performs non-destructive scale-based adjustments on named character objects
-- `apply_character_symmetry`
-  - configures mirror modifiers on mesh objects
-- `create_prop_blockout`
-  - creates named editable prop geometry in a dedicated collection
-- `apply_prop_symmetry`
-  - configures mirror modifiers on prop meshes
-- `apply_prop_materials`
-  - creates and assigns simple prop materials
-- `create_environment_layout`
-  - creates named editable environment layout geometry in a dedicated collection
-- `apply_environment_materials`
-  - creates and assigns simple environment materials
+- `client/mcp_stdio_server.py`
+
+That bridge does not expand backend privilege. It translates MCP stdio requests into authenticated TCP calls against Blender and applies a curated exposed tool registry.
+
+The generative layer in `client/mcp_adapter.py` only orchestrates real primitives. It does not grant arbitrary code execution and does not invent hidden commands.
+
+## Risk Levels
+
+### Lower Risk
+
+- `scene_info`
+- `object_info`
+- `telemetry_consent`
+- `integration_status`
+
+### Medium Risk
+
+- `viewport_screenshot`
 - `create_primitive`
-  - creates controlled primitive geometry with validated parameters
 - `move_object`
-  - moves an existing object by explicit coordinates
 - `rotate_object`
-  - rotates an existing object by explicit Euler angles
 - `scale_object`
-  - scales an existing object by explicit factors
 - `apply_material`
-  - creates and assigns simple principled materials
 - `create_light`
-  - creates scene lighting objects with validated parameters
 - `set_camera`
-  - creates or updates a camera with validated parameters
+- prop/environment/character blockout and review primitives
+- `search_assets`
 
-High risk:
+### Higher Risk
 
-- `download_polyhaven_asset`
-- `set_texture`
-- `import_generated_asset`
-- `download_sketchfab_model`
-- `import_generated_asset_hunyuan`
-- `clear_character_references`
+- `import_asset`
+- backend provider download/import commands
+- texture import/application flows
 
-These commands import assets, mutate the scene, or process remote archives.
+These mutate the Blender scene and may download or import external content.
 
-## Not Implemented Yet
+## What Is Intentionally Not Allowed
 
-- per-command authorization or role separation
-- request rate limiting
-- protocol version negotiation
-- command cancellation and progress channels
-- advanced character-generation features such as image understanding, richer procedural modeling, and autonomous refinement
+- unauthenticated commands
+- unrestricted filesystem access
+- arbitrary output paths for screenshots
+- unrestricted ZIP extraction
+- open LAN or public network access
+- arbitrary Python execution through Copilot
+
+## Operational Guidance
+
+Prefer this order when diagnosing problems:
+
+1. Verify backend connectivity with `python client/smoke_test.py`
+2. Verify the stdio bridge with `python client/mcp_stdio_server.py`
+3. Verify VS Code MCP launch from `.vscode/mcp.json`
+
+If backend tests pass but Copilot fails, treat that as a bridge or editor integration issue, not a reason to weaken auth or file restrictions.
