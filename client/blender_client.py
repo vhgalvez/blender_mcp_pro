@@ -1,98 +1,111 @@
 import json
+import logging
+import os
 import socket
+import uuid
 from typing import Any
 
 
-HOST = "127.0.0.1"
-PORT = 9876
-TOKEN = "123456"
-TIMEOUT_SECONDS = 5
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 9876
+DEFAULT_TIMEOUT_SECONDS = 10.0
+
+LOGGER = logging.getLogger("blender_mcp_bridge.client")
 
 
-def recv_line(sock: socket.socket) -> str:
-    buffer = b""
-    while not buffer.endswith(b"\n"):
-        chunk = sock.recv(4096)
-        if not chunk:
-            break
-        buffer += chunk
-    return buffer.decode("utf-8").strip()
+class BlenderClientError(RuntimeError):
+    def __init__(self, code: str, message: str, details: Any = None):
+        super().__init__(message)
+        self.code = code
+        self.details = details
 
 
-def send_line(sock: socket.socket, msg: dict[str, Any]) -> None:
-    sock.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+class BlenderTcpClient:
+    def __init__(self, host: str, port: int, token: str, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS):
+        self.host = host
+        self.port = port
+        self.token = token
+        self.timeout_seconds = timeout_seconds
 
+    @classmethod
+    def from_env(cls) -> "BlenderTcpClient":
+        host = os.environ.get("BLENDER_HOST", DEFAULT_HOST)
+        raw_port = os.environ.get("BLENDER_PORT", str(DEFAULT_PORT))
+        try:
+            port = int(raw_port)
+        except ValueError as exc:
+            raise RuntimeError(f"BLENDER_PORT must be an integer, got: {raw_port!r}") from exc
+        token = os.environ.get("BLENDER_TOKEN", "")
+        return cls(host=host, port=port, token=token)
 
-def parse_json_line(raw: str) -> dict[str, Any]:
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Respuesta JSON inválida: {raw}") from exc
+    def call(self, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not self.token:
+            raise RuntimeError("BLENDER_TOKEN is required")
+        if params is None:
+            params = {}
 
-    if not isinstance(data, dict):
-        raise RuntimeError(f"La respuesta no es un objeto JSON: {raw}")
+        LOGGER.info("Connecting to Blender backend %s:%s for command=%s", self.host, self.port, command)
+        with socket.create_connection((self.host, self.port), timeout=self.timeout_seconds) as sock:
+            sock.settimeout(self.timeout_seconds)
+            self._send_message(
+                sock,
+                {
+                    "id": f"auth-{uuid.uuid4().hex}",
+                    "type": "auth",
+                    "token": self.token,
+                },
+            )
+            auth_response = self._read_message(sock)
+            self._raise_if_not_ok(auth_response, "Authentication with Blender failed")
 
-    return data
+            self._send_message(
+                sock,
+                {
+                    "id": f"cmd-{uuid.uuid4().hex}",
+                    "type": "command",
+                    "command": command,
+                    "params": params,
+                },
+            )
+            response = self._read_message(sock)
+            self._raise_if_not_ok(response, f"Blender command failed: {command}")
+            if "result" not in response:
+                raise RuntimeError(f"Blender backend returned ok=true without result for command: {command}")
+            LOGGER.info("Blender backend command succeeded command=%s", command)
+            return response["result"]
 
+    def _send_message(self, sock: socket.socket, payload: dict[str, Any]) -> None:
+        sock.sendall((json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8"))
 
-def raise_if_not_ok(response: dict[str, Any], prefix: str) -> None:
-    if response.get("ok", False):
-        return
+    def _read_message(self, sock: socket.socket) -> dict[str, Any]:
+        buffer = b""
+        while not buffer.endswith(b"\n"):
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            buffer += chunk
+        if not buffer:
+            raise RuntimeError("Blender server closed the connection without responding")
 
-    error = response.get("error", {})
-    code = error.get("code", "unknown_error")
-    message = error.get("message", "Error desconocido")
-    raise RuntimeError(f"{prefix} [{code}]: {message}")
+        try:
+            message = json.loads(buffer.decode("utf-8").strip())
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Blender server returned invalid JSON") from exc
+        if not isinstance(message, dict):
+            raise RuntimeError("Blender server returned a non-object JSON payload")
+        return message
 
-
-def send_command(command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    if params is None:
-        params = {}
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(TIMEOUT_SECONDS)
-        s.connect((HOST, PORT))
-
-        auth_msg = {
-            "id": "auth-1",
-            "type": "auth",
-            "token": TOKEN,
-        }
-        send_line(s, auth_msg)
-
-        auth_raw = recv_line(s)
-        print("AUTH:", auth_raw)
-        if not auth_raw:
-            raise RuntimeError("El servidor cerró la conexión sin responder al auth.")
-
-        auth_response = parse_json_line(auth_raw)
-        raise_if_not_ok(auth_response, "Auth falló")
-
-        cmd_msg = {
-            "id": "cmd-1",
-            "type": "command",
-            "command": command,
-            "params": params,
-        }
-        send_line(s, cmd_msg)
-
-        result_raw = recv_line(s)
-        print("RESULT:", result_raw)
-        if not result_raw:
-            raise RuntimeError("El servidor cerró la conexión sin responder al comando.")
-
-        result_response = parse_json_line(result_raw)
-        raise_if_not_ok(result_response, "Comando falló")
-
-        return result_response
+    def _raise_if_not_ok(self, response: dict[str, Any], prefix: str) -> None:
+        if response.get("ok"):
+            return
+        error = response.get("error", {})
+        code = error.get("code", "unknown_error")
+        message = error.get("message", prefix)
+        details = error.get("details")
+        LOGGER.warning("Blender backend error code=%s message=%s", code, message)
+        raise BlenderClientError(code=code, message=f"{prefix}: {message}", details=details)
 
 
 if __name__ == "__main__":
-    response = send_command(
-        "create_prop_blockout",
-        {
-            "prop_type": "chair",
-            "mode": "props",
-        },
-    )
-    print("OK:", json.dumps(response, indent=2, ensure_ascii=False))
+    result = BlenderTcpClient.from_env().call("get_scene_info")
+    print(json.dumps(result, indent=2, ensure_ascii=False))

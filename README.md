@@ -20,6 +20,7 @@ El código es intencionadamente pequeño y enfocado en un transporte seguro, edi
   - [Uso Seguro](#uso-seguro)
     - [Mismo PC](#mismo-pc)
     - [LAN (opcional)](#lan-opcional)
+  - [Puente MCP STDIO](#puente-mcp-stdio)
   - [Modelo de Comandos](#modelo-de-comandos)
   - [Workflows](#workflows)
     - [Personajes](#personajes)
@@ -40,6 +41,9 @@ blender-mcp-pro/
 ├── LICENSE
 ├── README.md
 ├── SECURITY.md
+├── client/
+│   ├── blender_client.py
+│   └── mcp_adapter.py
 └── blender_mcp_pro/
         ├── __init__.py
         ├── addon.py
@@ -61,6 +65,8 @@ blender-mcp-pro/
 - `integrations.py`: Lógica HTTP para proveedores externos.
 - `file_ops.py`: Seguridad de archivos, descargas, importación.
 - `character_tools.py`: Herramientas de personajes y materiales.
+- `client/blender_client.py`: Cliente TCP pequeño para autenticarse y enviar comandos al backend de Blender.
+- `client/mcp_adapter.py`: Puente MCP por STDIO para clientes compatibles como Copilot/Codex.
 
 ---
 
@@ -148,6 +154,55 @@ blender_mcp_pro.zip
 
 ---
 
+## Puente MCP STDIO
+
+El complemento `blender_mcp_pro` sigue siendo el backend dentro de Blender. Su responsabilidad es:
+
+- exponer el servidor TCP local autenticado
+- validar red/token
+- ejecutar comandos de escena en el hilo principal de Blender
+
+Ese backend **no es MCP nativo** para Copilot/Codex porque habla un protocolo NDJSON propio sobre socket TCP (`auth` + `command`) en lugar de MCP estándar por STDIO y JSON-RPC.
+
+Para resolverlo, el repositorio ahora incluye `client/mcp_adapter.py`, un puente MCP compacto que:
+
+- corre como servidor MCP por STDIO
+- lee `BLENDER_HOST`, `BLENDER_PORT` y `BLENDER_TOKEN`
+- se conecta al backend TCP ya existente del complemento
+- autentica primero
+- traduce `tools/call` de MCP a los comandos actuales de Blender
+
+Herramientas MCP expuestas inicialmente:
+
+- `get_scene_info`
+- `get_object_info`
+- `create_character_blockout`
+- `create_prop_blockout`
+- `create_environment_layout`
+
+### Uso
+
+1. Instala y habilita el complemento en Blender.
+2. Configura el **Auth Token** en preferencias.
+3. Inicia el servidor desde el panel del complemento.
+4. Configura tu cliente MCP para lanzar:
+
+```powershell
+python client/mcp_adapter.py
+```
+
+con estas variables de entorno:
+
+```powershell
+$env:BLENDER_HOST = "127.0.0.1"
+$env:BLENDER_PORT = "9876"
+$env:BLENDER_TOKEN = "tu_token"
+```
+
+El detalle exacto de configuración depende del cliente MCP, pero la idea es siempre la misma: Copilot/Codex debe arrancar este proceso STDIO, y este proceso reenviará cada tool call al servidor TCP autenticado del add-on.
+
+---
+
 
 ## Modelo de Comandos
 
@@ -216,14 +271,11 @@ No implementa aún:
 
 ---
 
-b7f3c2a1-9c4d-4f2e-a8e1-6d9c2b7a1234
-the server will reject the connection
-the client will be logged as rejected in the audit log
-
 ## Estado Actual
 
 - Arquitectura compacta y segura
 - Servidor local y whitelist LAN
+- Puente MCP STDIO para compatibilidad con clientes MCP locales
 - Workflows básicos de personajes, props y entornos
 
 No es aún una plataforma autónoma de generación 3D.
