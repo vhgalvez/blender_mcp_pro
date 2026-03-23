@@ -10,7 +10,6 @@ import bpy
 
 from .dispatcher import CommandDispatcher
 from . import file_ops
-from .mcp_tools import build_tool_registry, resolve_tool_name
 from .protocol import (
     NDJSONProtocol,
     ProtocolError,
@@ -20,6 +19,7 @@ from .protocol import (
     make_jsonrpc_result,
     make_result,
 )
+from .tool_registry import build_mcp_tool_definition, get_backend_tool, iter_backend_tools
 
 
 class BlenderMCPServer:
@@ -31,7 +31,6 @@ class BlenderMCPServer:
         self.socket = None
         self.server_thread = None
         self.dispatcher = CommandDispatcher(addon_module_name, self.call_in_main_thread)
-        self.mcp_tools = build_tool_registry(self.dispatcher)
         self.audit_logger = self._build_audit_logger()
 
     def start(self):
@@ -212,12 +211,9 @@ class BlenderMCPServer:
 
         if method == "tools/list":
             tools = [
-                {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "inputSchema": tool["input_schema"],
-                }
-                for tool in self.mcp_tools
+                build_mcp_tool_definition(tool)
+                for tool in iter_backend_tools(exposed_only=True)
+                if hasattr(self.dispatcher, f"cmd_{tool['command']}")
             ]
             return make_jsonrpc_result(request_id, {"tools": tools})
 
@@ -235,8 +231,8 @@ class BlenderMCPServer:
                     self._mcp_tool_error("invalid_arguments", "Tool arguments must be an object."),
                 )
 
-            tool = resolve_tool_name(self.dispatcher, requested_name)
-            if tool is None:
+            tool = get_backend_tool(requested_name)
+            if tool is None or not hasattr(self.dispatcher, f"cmd_{tool['command']}"):
                 return make_jsonrpc_result(
                     request_id,
                     self._mcp_tool_error("unknown_tool", f"Unknown tool: {requested_name}"),

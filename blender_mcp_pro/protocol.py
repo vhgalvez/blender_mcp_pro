@@ -1,90 +1,9 @@
 import codecs
 import json
 
+from .tool_registry import COMMAND_SCHEMAS
 
 MAX_MESSAGE_SIZE = 1024 * 1024
-
-COMMAND_SCHEMAS = {
-    "get_scene_info": {"params": {}},
-    "get_object_info": {"params": {"name": str}, "required": {"name"}},
-    "get_viewport_screenshot": {"params": {"filepath": str, "format": str, "max_size": int}},
-    "get_telemetry_consent": {"params": {}},
-    "create_primitive": {
-        "params": {
-            "primitive_type": str,
-            "name": str,
-            "collection_name": str,
-            "location": list,
-            "rotation": list,
-            "scale": list,
-        },
-        "required": {"primitive_type"},
-    },
-    "move_object": {"params": {"name": str, "location": list}, "required": {"name", "location"}},
-    "rotate_object": {"params": {"name": str, "rotation": list}, "required": {"name", "rotation"}},
-    "scale_object": {"params": {"name": str, "scale": list}, "required": {"name", "scale"}},
-    "apply_material": {
-        "params": {
-            "object_name": str,
-            "material_name": str,
-            "base_color": list,
-            "metallic": float,
-            "roughness": float,
-        },
-        "required": {"object_name"},
-    },
-    "create_light": {
-        "params": {
-            "light_type": str,
-            "name": str,
-            "location": list,
-            "rotation": list,
-            "energy": float,
-            "color": list,
-        }
-    },
-    "set_camera": {
-        "params": {
-            "name": str,
-            "location": list,
-            "rotation": list,
-            "lens": float,
-            "make_active": bool,
-        }
-    },
-    "get_polyhaven_status": {"params": {}},
-    "get_hyper3d_status": {"params": {}},
-    "get_sketchfab_status": {"params": {}},
-    "get_hunyuan3d_status": {"params": {}},
-    "get_polyhaven_categories": {"params": {"asset_type": str}, "required": {"asset_type"}},
-    "search_polyhaven_assets": {"params": {"asset_type": str, "categories": str}},
-    "download_polyhaven_asset": {"params": {"asset_id": str, "asset_type": str, "resolution": str, "file_format": str}, "required": {"asset_id", "asset_type"}},
-    "set_texture": {"params": {"object_name": str, "texture_id": str}, "required": {"object_name", "texture_id"}},
-    "create_rodin_job": {"params": {"text_prompt": str, "images": list, "bbox_condition": dict}},
-    "poll_rodin_job_status": {"params": {"subscription_key": str, "request_id": str}},
-    "import_generated_asset": {"params": {"task_uuid": str, "request_id": str, "name": str}, "required": {"name"}},
-    "search_sketchfab_models": {"params": {"query": str, "categories": str, "count": int, "downloadable": bool}, "required": {"query"}},
-    "get_sketchfab_model_preview": {"params": {"uid": str}, "required": {"uid"}},
-    "download_sketchfab_model": {"params": {"uid": str, "normalize_size": bool, "target_size": float}, "required": {"uid"}},
-    "create_hunyuan_job": {"params": {"text_prompt": str, "image": str}},
-    "poll_hunyuan_job_status": {"params": {"job_id": str}, "required": {"job_id"}},
-    "import_generated_asset_hunyuan": {"params": {"name": str, "zip_file_url": str}, "required": {"name", "zip_file_url"}},
-    "load_character_references": {"params": {"mode": str, "front": str, "side": str, "back": str}, "required": {"front", "side"}},
-    "clear_character_references": {"params": {"mode": str}},
-    "create_character_blockout": {"params": {"mode": str, "height": float, "collection_name": str}},
-    "apply_character_symmetry": {"params": {"mode": str, "object_names": list, "use_bisect": bool, "use_clip": bool}},
-    "build_character_hair": {"params": {"mode": str, "spike_count": int, "collection_name": str}},
-    "build_character_face": {"params": {"mode": str, "add_piercings": bool, "collection_name": str}},
-    "apply_character_materials": {"params": {"mode": str, "include_metal": bool}},
-    "capture_character_review": {"params": {"mode": str}},
-    "compare_character_with_references": {"params": {"mode": str}},
-    "apply_character_proportion_fixes": {"params": {"mode": str, "correction_report": dict, "deltas": dict, "strength": float}},
-    "create_prop_blockout": {"params": {"mode": str, "prop_type": str, "collection_name": str}, "required": {"mode", "prop_type"}},
-    "apply_prop_symmetry": {"params": {"mode": str, "object_names": list, "use_bisect": bool, "use_clip": bool}, "required": {"mode"}},
-    "apply_prop_materials": {"params": {"mode": str, "include_metal": bool}, "required": {"mode"}},
-    "create_environment_layout": {"params": {"mode": str, "layout_type": str, "collection_name": str}, "required": {"mode", "layout_type"}},
-    "apply_environment_materials": {"params": {"mode": str}, "required": {"mode"}},
-}
 
 
 class ProtocolError(Exception):

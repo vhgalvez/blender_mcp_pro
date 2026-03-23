@@ -6,7 +6,8 @@ import mathutils
 from .character_tools import CharacterTools
 from . import file_ops
 from .integrations import ProviderIntegrations
-from .protocol import COMMAND_SCHEMAS, ProtocolError
+from .protocol import ProtocolError
+from .tool_registry import COMMAND_SCHEMAS
 
 
 class SceneModeTools:
@@ -378,8 +379,9 @@ class CommandDispatcher:
         self.scene_mode_tools = SceneModeTools()
 
     def dispatch(self, command_name, params):
-        self.validate(command_name, params)
-        handler = getattr(self, f"cmd_{command_name}", None)
+        resolved_command = self._resolve_command_name(command_name)
+        self.validate(resolved_command, params)
+        handler = getattr(self, f"cmd_{resolved_command}", None)
         if handler is None:
             raise ProtocolError("unknown_command", f"Unknown command: {command_name}")
         try:
@@ -408,6 +410,20 @@ class CommandDispatcher:
             expected = allowed[name]
             if not isinstance(value, expected):
                 raise ProtocolError("invalid_params", f"Param '{name}' must be {expected.__name__}")
+
+    def _resolve_command_name(self, command_name):
+        if command_name in COMMAND_SCHEMAS:
+            return command_name
+        aliases = {
+            "scene_info": "get_scene_info",
+            "object_info": "get_object_info",
+            "viewport_screenshot": "get_viewport_screenshot",
+            "telemetry_consent": "get_telemetry_consent",
+            "integration_status": "get_integration_status",
+            "polyhaven_categories": "get_polyhaven_categories",
+            "apply_texture_set": "set_texture",
+        }
+        return aliases.get(command_name, command_name)
 
     def _get_prefs(self):
         def read_prefs():
@@ -621,6 +637,22 @@ class CommandDispatcher:
             return {"enabled": enabled, "mode": flags["hunyuan3d_mode"], "message": "Hunyuan3D official API is ready." if enabled else "Hunyuan3D official API secrets are missing in add-on preferences."}
         enabled = bool(flags["hunyuan3d_api_url"])
         return {"enabled": enabled, "mode": flags["hunyuan3d_mode"], "message": "Hunyuan3D local API is ready." if enabled else "Hunyuan3D local API URL is missing."}
+
+    def cmd_get_integration_status(self, provider=None):
+        checks = {
+            "polyhaven": self.cmd_get_polyhaven_status,
+            "hyper3d": self.cmd_get_hyper3d_status,
+            "sketchfab": self.cmd_get_sketchfab_status,
+            "hunyuan3d": self.cmd_get_hunyuan3d_status,
+        }
+        if provider:
+            normalized = str(provider).strip().lower()
+            if normalized not in checks:
+                raise ValueError("provider must be one of polyhaven, hyper3d, sketchfab, hunyuan3d")
+            return {"provider": normalized, "status": checks[normalized]()}
+        return {
+            "providers": {name: callback() for name, callback in checks.items()},
+        }
 
     def cmd_get_polyhaven_categories(self, asset_type):
         if asset_type not in {"hdris", "textures", "models", "all"}:

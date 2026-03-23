@@ -8,4 +8,12 @@ bl_info = {
     "category": "Interface",
 }
 
-from .addon import register, unregister
+try:
+    from .addon import register, unregister
+except ImportError:
+    # Allow non-Blender Python processes to import shared metadata modules.
+    def register():
+        raise RuntimeError("Blender register() is only available inside Blender")
+
+    def unregister():
+        raise RuntimeError("Blender unregister() is only available inside Blender")
