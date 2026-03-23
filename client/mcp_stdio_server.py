@@ -31,9 +31,14 @@ LOGGER = configure_logging()
 class MCPStdioServer:
     def __init__(self):
         self.adapter = BlenderMCPAdapter()
+        self.initialized = False
+        self.shutdown_requested = False
 
     def run(self):
+        LOGGER.info("stdio_server_started name=%s version=%s", SERVER_NAME, SERVER_VERSION)
         for raw_line in sys.stdin:
+            if self.shutdown_requested:
+                break
             line = raw_line.strip()
             if not line:
                 continue
@@ -61,6 +66,7 @@ class MCPStdioServer:
 
         try:
             if method == "initialize":
+                self.initialized = True
                 self._write_result(
                     request_id,
                     {
@@ -77,6 +83,19 @@ class MCPStdioServer:
                 return
 
             if method == "notifications/initialized":
+                return
+
+            if method == "shutdown":
+                self.shutdown_requested = True
+                self._write_result(request_id, {})
+                return
+
+            if method == "exit":
+                self.shutdown_requested = True
+                return
+
+            if not self.initialized:
+                self._write_error(request_id, -32002, "Server not initialized")
                 return
 
             if method == "ping":

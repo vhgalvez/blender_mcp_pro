@@ -348,6 +348,7 @@ Lo que se instala en Blender:
 Lo que permanece fuera de Blender:
 
 - toda la carpeta `client/`
+- `client/.env` como ayuda local opcional para el bridge y las pruebas
 
 No intentes instalar `client/` como add-on de Blender.
 
