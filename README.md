@@ -303,3 +303,67 @@ The project currently provides:
 - multipurpose phase 1 for props and environment
 
 It does not yet provide a full autonomous 3D generation platform.
+
+
+🔐 Authentication Token (Required)
+
+The MCP server requires a shared authentication token before it can accept and execute any client commands.
+
+This token is not generated externally and does not come from any provider.
+It is a manually defined shared secret between Blender and your MCP client.
+
+How To Create A Token
+
+You can use any string, but it is recommended to use a unique and non-trivial value.
+
+Option 1 — Simple (for testing)
+123456
+Option 2 — Custom secure string (recommended)
+mcp_secure_token_2026_victor
+Option 3 — Random token (recommended for real use)
+
+Generate a UUID in PowerShell:
+
+[guid]::NewGuid()
+
+Example output:
+
+b7f3c2a1-9c4d-4f2e-a8e1-6d9c2b7a1234
+Where To Set The Token
+Open Blender
+Go to the MCP panel in the 3D View sidebar (N key → Blender MCP tab)
+Click:
+Open Add-on Preferences
+Find the field:
+Auth Token
+Paste your token there
+Why The Token Is Required
+
+The MCP server uses the token to authenticate every client connection.
+
+Without a valid token:
+
+the server will reject the connection
+no commands will be executed
+the client will be logged as rejected in the audit log
+Example Client Authentication
+
+A client must authenticate before sending any command:
+
+{
+  "type": "auth",
+  "token": "mcp_secure_token_2026_victor"
+}
+
+The token must match exactly the one configured in Blender.
+
+Security Notes
+Never expose your token in public repositories
+Rotate the token if you enable LAN whitelist mode
+Use a strong random token when connecting multiple machines
+The token is required even in local-only mode
+💡 EXTRA (recomendación PRO)
+
+También puedes añadir esta línea en tu README arriba:
+
+> ⚠️ The server will not start until a valid Auth Token is set in the add-on preferences.

@@ -240,6 +240,9 @@ class BlenderMCPServer:
             return False
 
     def call_in_main_thread(self, func, timeout=30.0):
+        if threading.current_thread() is threading.main_thread():
+            return func()
+
         result = {}
         done = threading.Event()
 
