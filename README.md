@@ -543,6 +543,31 @@ $env:BLENDER_MCP_ADAPTER_LOG = "DEBUG"
 
 ---
 
+## Troubleshooting
+
+### `python client/smoke_test.py` pasa pero un prompt libre falla
+
+- el backend TCP funciona
+- el problema suele estar en `client/mcp_adapter.py`
+- usa `tools` y `raw <tool_name> <json_params>` en `python client/agent_cli.py` para comprobar si el routing está enviando el tool correcto
+
+### Un tool está declarado en `client/` pero no existe en `dispatcher.py`
+
+- el cliente ahora distingue entre:
+  - `server`
+  - `adapter_workflow`
+  - `adapter_alias`
+  - `unavailable`
+- si un tool no existe realmente en el servidor, la CLI devuelve `tool_not_implemented`
+
+### La carpeta `client/` no forma parte de la instalación de Blender
+
+- instala solo `blender_mcp_pro/`
+- deja `client/` en la raíz del repositorio
+- no copies `client/` dentro del ZIP del add-on
+
+---
+
 
 ## Modelo de Comandos
 
