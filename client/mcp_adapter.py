@@ -301,36 +301,6 @@ class BlenderMCPAdapter:
             "materials": materials,
         }
 
-    def serve_stdio(self):
-        for raw_line in sys.stdin:
-            line = raw_line.strip()
-            if not line:
-                continue
-
-            try:
-                message = json.loads(line)
-                if not isinstance(message, dict):
-                    raise ValueError("Message must be a JSON object")
-
-                action = message.get("action")
-                if action == "list_tools":
-                    payload = {"ok": True, "tools": self.list_tools()}
-                elif action == "route_prompt":
-                    payload = {"ok": True, "call": self.route_prompt(message.get("prompt", ""))}
-                elif action == "call_tool":
-                    payload = {
-                        "ok": True,
-                        "result": self.call_tool(message.get("tool", ""), message.get("params", {}) or {}),
-                    }
-                else:
-                    raise ValueError("Unsupported action")
-            except Exception as exc:
-                LOGGER.error("adapter_error %s", exc)
-                payload = {"ok": False, "error": str(exc)}
-
-            sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
-
     def _call_backend(self, tool_name: str, params: dict[str, Any]):
         if tool_name not in SERVER_TOOL_NAMES:
             raise ValueError(f"Tool is not implemented on the Blender server: {tool_name}")
@@ -692,11 +662,3 @@ class BlenderMCPAdapter:
 
 def route_prompt(prompt: str) -> dict:
     return BlenderMCPAdapter().route_prompt(prompt)
-
-
-def main():
-    BlenderMCPAdapter().serve_stdio()
-
-
-if __name__ == "__main__":
-    main()

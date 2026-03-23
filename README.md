@@ -87,6 +87,8 @@ blender-mcp-pro/
 - `client/smoke_test.py`: Smoke test local para validar auth y comandos básicos contra el backend TCP.
 - `client/tools_registry.py`: Registro de herramientas MCP locales con descripciones y esquemas JSON.
 
+`client/mcp_adapter.py` ya no es un entrypoint stdio. El unico entrypoint MCP para VS Code es `client/mcp_stdio_server.py`.
+
 ---
 
 ## Modelo de Seguridad
