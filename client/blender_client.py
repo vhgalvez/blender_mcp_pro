@@ -3,7 +3,10 @@ import logging
 import os
 import socket
 import uuid
+from pathlib import Path
 from typing import Any
+
+from dotenv import load_dotenv
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -21,7 +24,13 @@ class BlenderClientError(RuntimeError):
 
 
 class BlenderTcpClient:
-    def __init__(self, host: str, port: int, token: str, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        token: str,
+        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    ):
         self.host = host
         self.port = port
         self.token = token
@@ -29,25 +38,44 @@ class BlenderTcpClient:
 
     @classmethod
     def from_env(cls) -> "BlenderTcpClient":
-        host = os.environ.get("BLENDER_HOST", DEFAULT_HOST)
-        raw_port = os.environ.get("BLENDER_PORT", str(DEFAULT_PORT))
-        raw_timeout = os.environ.get("BLENDER_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS))
+        """
+        Carga variables desde el archivo .env ubicado en el mismo directorio
+        que este archivo, y luego construye el cliente.
+        """
+        env_path = Path(__file__).resolve().parent / ".env"
+        load_dotenv(env_path)
+
+        host = os.getenv("BLENDER_HOST", DEFAULT_HOST)
+        raw_port = os.getenv("BLENDER_PORT", str(DEFAULT_PORT))
+        raw_timeout = os.getenv("BLENDER_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS))
+        token = os.getenv("BLENDER_TOKEN", "").strip()
+
         try:
             port = int(raw_port)
         except ValueError as exc:
             raise RuntimeError(f"BLENDER_PORT must be an integer, got: {raw_port!r}") from exc
+
         try:
             timeout_seconds = float(raw_timeout)
         except ValueError as exc:
-            raise RuntimeError(f"BLENDER_TIMEOUT_SECONDS must be a number, got: {raw_timeout!r}") from exc
+            raise RuntimeError(
+                f"BLENDER_TIMEOUT_SECONDS must be a number, got: {raw_timeout!r}"
+            ) from exc
+
         if timeout_seconds <= 0:
             raise RuntimeError("BLENDER_TIMEOUT_SECONDS must be greater than zero")
-        token = os.environ.get("BLENDER_TOKEN", "")
-        return cls(host=host, port=port, token=token, timeout_seconds=timeout_seconds)
+
+        return cls(
+            host=host,
+            port=port,
+            token=token,
+            timeout_seconds=timeout_seconds,
+        )
 
     def call(self, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.token:
             raise RuntimeError("BLENDER_TOKEN is required")
+
         if params is None:
             params = {}
 
@@ -58,8 +86,12 @@ class BlenderTcpClient:
             self.timeout_seconds,
             command,
         )
+
         try:
-            sock = socket.create_connection((self.host, self.port), timeout=self.timeout_seconds)
+            sock = socket.create_connection(
+                (self.host, self.port),
+                timeout=self.timeout_seconds,
+            )
         except OSError as exc:
             raise RuntimeError(
                 f"Could not connect to Blender backend at {self.host}:{self.port}. "
@@ -68,6 +100,7 @@ class BlenderTcpClient:
 
         with sock:
             sock.settimeout(self.timeout_seconds)
+
             self._send_message(
                 sock,
                 {
@@ -90,16 +123,22 @@ class BlenderTcpClient:
             )
             response = self._read_message(sock)
             self._raise_if_not_ok(response, f"Blender command failed: {command}")
+
             if "result" not in response:
-                raise RuntimeError(f"Blender backend returned ok=true without result for command: {command}")
+                raise RuntimeError(
+                    f"Blender backend returned ok=true without result for command: {command}"
+                )
+
             LOGGER.info("Blender backend command succeeded command=%s", command)
             return response["result"]
 
     def _send_message(self, sock: socket.socket, payload: dict[str, Any]) -> None:
-        sock.sendall((json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8"))
+        data = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+        sock.sendall(data)
 
     def _read_message(self, sock: socket.socket) -> dict[str, Any]:
         buffer = b""
+
         while not buffer.endswith(b"\n"):
             try:
                 chunk = sock.recv(4096)
@@ -107,29 +146,46 @@ class BlenderTcpClient:
                 raise RuntimeError(
                     f"Timed out waiting for Blender backend response from {self.host}:{self.port}"
                 ) from exc
+
             if not chunk:
                 break
+
             buffer += chunk
+
         if not buffer:
-            raise RuntimeError(f"Blender backend at {self.host}:{self.port} closed the connection without responding")
+            raise RuntimeError(
+                f"Blender backend at {self.host}:{self.port} closed the connection without responding"
+            )
 
         try:
             message = json.loads(buffer.decode("utf-8").strip())
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f"Blender backend at {self.host}:{self.port} returned invalid JSON") from exc
+            raise RuntimeError(
+                f"Blender backend at {self.host}:{self.port} returned invalid JSON"
+            ) from exc
+
         if not isinstance(message, dict):
-            raise RuntimeError(f"Blender backend at {self.host}:{self.port} returned a non-object JSON payload")
+            raise RuntimeError(
+                f"Blender backend at {self.host}:{self.port} returned a non-object JSON payload"
+            )
+
         return message
 
     def _raise_if_not_ok(self, response: dict[str, Any], prefix: str) -> None:
         if response.get("ok"):
             return
+
         error = response.get("error", {})
         code = error.get("code", "unknown_error")
         message = error.get("message", prefix)
         details = error.get("details")
+
         LOGGER.warning("Blender backend error code=%s message=%s", code, message)
-        raise BlenderClientError(code=code, message=f"{prefix}: {message}", details=details)
+        raise BlenderClientError(
+            code=code,
+            message=f"{prefix}: {message}",
+            details=details,
+        )
 
 
 if __name__ == "__main__":
