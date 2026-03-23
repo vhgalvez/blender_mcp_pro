@@ -38,8 +38,20 @@ class SceneModeTools:
             if obj.name in bpy.data.objects:
                 bpy.data.objects.remove(obj, do_unlink=True)
 
-    def _create_root(self, root_name, collection, location=(0.0, 0.0, 0.0)):
-        self._clear_named_hierarchy(root_name)
+    def _unique_name(self, base_name):
+        if bpy.data.objects.get(base_name) is None:
+            return base_name
+
+        index = 1
+        while True:
+            candidate = f"{base_name}_{index:03d}"
+            if bpy.data.objects.get(candidate) is None:
+                return candidate
+            index += 1
+
+    def _create_root(self, root_name, collection, location=(0.0, 0.0, 0.0), clear_existing=True):
+        if clear_existing:
+            self._clear_named_hierarchy(root_name)
         bpy.ops.object.empty_add(type="PLAIN_AXES", location=location)
         root = bpy.context.active_object
         root.name = root_name
@@ -192,7 +204,10 @@ class SceneModeTools:
 
     def create_prop_blockout(self, prop_type, collection_name=None):
         collection = self._ensure_collection(collection_name or self.PROP_COLLECTION_NAME)
-        root = self._create_root(self.PROP_ROOT_NAME, collection, location=(0.0, 0.0, 0.5))
+        # Each prop blockout gets its own root so creating a new prop does not
+        # delete previously created props in the same scene.
+        root_name = self._unique_name(f"{self.PROP_ROOT_NAME}_{prop_type.title()}")
+        root = self._create_root(root_name, collection, location=(0.0, 0.0, 0.5), clear_existing=False)
         created = []
 
         def add_cube(name, location, scale_xyz):
