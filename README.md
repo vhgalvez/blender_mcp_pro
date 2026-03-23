@@ -56,6 +56,7 @@ blender-mcp-pro/
 │   ├── agent_cli.py
 │   ├── blender_client.py
 │   ├── mcp_adapter.py
+│   ├── mcp_stdio_server.py
 │   ├── smoke_test.py
 │   └── tools_registry.py
 └── blender_mcp_pro/
@@ -82,6 +83,7 @@ blender-mcp-pro/
 - `client/agent_cli.py`: CLI interactiva para prompts libres, comandos raw y exploración local del toolkit.
 - `client/blender_client.py`: Cliente TCP pequeño para autenticarse y enviar comandos al backend de Blender.
 - `client/mcp_adapter.py`: Adaptador local para routing de prompts, workflows y despacho de herramientas al backend TCP.
+- `client/mcp_stdio_server.py`: Servidor MCP stdio real para VS Code y clientes compatibles con MCP.
 - `client/smoke_test.py`: Smoke test local para validar auth y comandos básicos contra el backend TCP.
 - `client/tools_registry.py`: Registro de herramientas MCP locales con descripciones y esquemas JSON.
 
@@ -135,11 +137,12 @@ $env:BLENDER_PORT = "9876"
 $env:BLENDER_TOKEN = "tu_token"
 ```
 
-6. Ejecuta el cliente o la CLI desde este repositorio:
+6. Ejecuta el cliente, la CLI, o el bridge MCP stdio desde este repositorio:
 
 ```powershell
 python client/smoke_test.py
 python client/agent_cli.py
+python client/mcp_stdio_server.py
 ```
 
 7. Usa `python client/smoke_test.py` para validar auth y comandos básicos.
@@ -156,7 +159,7 @@ VS Code / CLI / Local AI Agent
             |
             v
 client/
-(agent_cli.py, mcp_adapter.py, blender_client.py, smoke_test.py)
+(agent_cli.py, mcp_adapter.py, mcp_stdio_server.py, blender_client.py, smoke_test.py)
             |
             v
 Blender TCP Server
@@ -172,6 +175,7 @@ Responsabilidades:
 - `blender_mcp_pro/` es lo único que se instala en Blender.
 - `client/` permanece fuera de Blender y consume el servidor TCP autenticado.
 - `client/blender_client.py` mantiene la compatibilidad con el cliente TCP actual.
+- `client/mcp_stdio_server.py` expone un servidor MCP stdio local que VS Code puede lanzar.
 - `client/agent_cli.py` y `client/mcp_adapter.py` ayudan a un agente local a usar herramientas reales del servidor sin cambiar la arquitectura del add-on.
 
 ---
@@ -330,6 +334,7 @@ client/
 ├── agent_cli.py
 ├── blender_client.py
 ├── mcp_adapter.py
+├── mcp_stdio_server.py
 ├── smoke_test.py
 └── tools_registry.py
 ```
@@ -410,6 +415,7 @@ El directorio `client/` es un consumidor externo de ese backend:
 
 - `blender_client.py` habla el protocolo TCP actual
 - `mcp_adapter.py` alinea prompts y tools con los comandos reales del servidor
+- `mcp_stdio_server.py` traduce MCP stdio a llamadas TCP autenticadas contra Blender
 - `agent_cli.py` ofrece una CLI práctica para workflows iterativos
 
 La arquitectura correcta es:
@@ -428,6 +434,36 @@ blender_mcp_pro/
 ```
 
 `client/` no forma parte de la instalación del add-on.
+
+### Registro En VS Code
+
+Crea o revisa `.vscode/mcp.json` en la raiz del repositorio:
+
+```json
+{
+  "servers": {
+    "blender-mcp-pro": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["client/mcp_stdio_server.py"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "BLENDER_HOST": "127.0.0.1",
+        "BLENDER_PORT": "9876",
+        "BLENDER_TOKEN": "replace-with-your-token"
+      }
+    }
+  }
+}
+```
+
+Esto permite que VS Code Copilot Agent mode lance el bridge MCP local desde el workspace.
+
+Importante:
+
+- instala solo `blender_mcp_pro/` en Blender
+- deja `client/` fuera de Blender
+- `client/` no va dentro del ZIP del add-on
 
 ---
 
@@ -477,6 +513,7 @@ Ejemplos:
 python client/smoke_test.py
 python client/smoke_test.py --with-character
 python client/agent_cli.py
+python client/mcp_stdio_server.py
 ```
 
 CLI interactiva:
@@ -517,6 +554,12 @@ $env:BLENDER_TOKEN = "tu_token"
 python client/agent_cli.py
 ```
 
+O lanza el bridge MCP stdio directamente:
+
+```powershell
+python client/mcp_stdio_server.py
+```
+
 7. Prueba prompts en inglés o español:
 
 ```text
@@ -551,14 +594,20 @@ $env:BLENDER_MCP_ADAPTER_LOG = "DEBUG"
 - el problema suele estar en `client/mcp_adapter.py`
 - usa `tools` y `raw <tool_name> <json_params>` en `python client/agent_cli.py` para comprobar si el routing está enviando el tool correcto
 
+### `python client/smoke_test.py` pasa pero VS Code no ve tools MCP
+
+- confirma que `.vscode/mcp.json` apunta a `client/mcp_stdio_server.py`
+- confirma que `BLENDER_HOST`, `BLENDER_PORT` y `BLENDER_TOKEN` en `.vscode/mcp.json` coinciden con Blender
+- ejecuta `python client/mcp_stdio_server.py` manualmente para verificar que el proceso arranca sin errores de entorno
+- si el bridge arranca pero `tools/call` falla, el problema suele estar en el backend TCP o en las variables de entorno
+
 ### Un tool está declarado en `client/` pero no existe en `dispatcher.py`
 
 - el cliente ahora distingue entre:
   - `server`
-  - `adapter_workflow`
-  - `adapter_alias`
   - `unavailable`
-- si un tool no existe realmente en el servidor, la CLI devuelve `tool_not_implemented`
+- el servidor MCP stdio solo expone tools `server`
+- si un tool no existe realmente en el servidor, la CLI o el bridge devuelven `tool_not_implemented`
 
 ### La carpeta `client/` no forma parte de la instalación de Blender
 

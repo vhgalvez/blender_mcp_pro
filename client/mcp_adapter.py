@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from blender_client import BlenderTcpClient
-from tools_registry import TOOLS
+from tools_registry import CALLABLE_TOOL_NAMES, TOOLS, TOOLS_BY_NAME
 
 
 def configure_logging() -> logging.Logger:
@@ -21,9 +21,12 @@ def configure_logging() -> logging.Logger:
 
 
 LOGGER = configure_logging()
-TOOLS_BY_NAME = {tool["name"]: tool for tool in TOOLS}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-SERVER_TOOL_NAMES = {tool["name"] for tool in TOOLS if tool["availability"] == "server"}
+LOCAL_WORKFLOW_TOOL_NAMES = {
+    "create_character_from_references",
+    "review_and_fix_character",
+    "create_shop_scene",
+}
 
 
 class BlenderMCPAdapter:
@@ -34,50 +37,41 @@ class BlenderMCPAdapter:
         return TOOLS
 
     def call_tool(self, tool_name: str, params: dict):
-        if tool_name not in TOOLS_BY_NAME:
-            raise ValueError(f"Unknown tool: {tool_name}")
-
-        tool_meta = TOOLS_BY_NAME[tool_name]
         params = dict(params or {})
+        availability = TOOLS_BY_NAME.get(tool_name, {}).get("availability", "local_workflow" if tool_name in LOCAL_WORKFLOW_TOOL_NAMES else "unknown")
         LOGGER.info(
             "tool_selected %s",
             json.dumps(
                 {
                     "tool": tool_name,
-                    "availability": tool_meta["availability"],
+                    "availability": availability,
                     "params": params,
                 },
                 ensure_ascii=False,
             ),
         )
 
-        if tool_meta["availability"] == "unavailable":
-            suggestions = self._tool_suggestions(tool_name)
-            result = {
-                "error": "tool_not_implemented",
-                "tool": tool_name,
-                "message": tool_meta["description"],
-                "suggestions": suggestions,
-            }
-            LOGGER.warning("tool_unavailable %s", json.dumps(result, ensure_ascii=False))
-            return result
-
-        if tool_name == "create_character_from_references":
-            result = self._create_character_from_references(params)
-        elif tool_name == "review_and_fix_character":
-            result = self._review_and_fix_character(params)
-        elif tool_name == "create_shop_scene":
-            result = self._create_shop_scene(params)
-        elif tool_name == "create_room_blockout":
-            result = self._call_backend(
-                "create_environment_layout",
-                {
-                    "layout_type": "room",
-                    "collection_name": params.get("collection_name"),
-                },
-            )
-        else:
+        if tool_name in LOCAL_WORKFLOW_TOOL_NAMES:
+            if tool_name == "create_character_from_references":
+                result = self._create_character_from_references(params)
+            elif tool_name == "review_and_fix_character":
+                result = self._review_and_fix_character(params)
+            else:
+                result = self._create_shop_scene(params)
+        elif tool_name in TOOLS_BY_NAME:
+            tool_meta = TOOLS_BY_NAME[tool_name]
+            if tool_meta["availability"] == "unavailable":
+                result = {
+                    "error": "tool_not_implemented",
+                    "tool": tool_name,
+                    "message": tool_meta["description"],
+                    "suggestions": self._tool_suggestions(tool_name),
+                }
+                LOGGER.warning("tool_unavailable %s", json.dumps(result, ensure_ascii=False))
+                return result
             result = self._call_backend(tool_name, params)
+        else:
+            raise ValueError(f"Unknown tool: {tool_name}")
 
         LOGGER.info(
             "tool_result %s",
@@ -91,20 +85,40 @@ class BlenderMCPAdapter:
         if not text:
             raise ValueError("Prompt is empty")
 
-        if any(phrase in text for phrase in ["scene info", "scene summary", "show scene", "what is in the scene", "info de escena", "resumen de escena"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "scene info",
+                "scene summary",
+                "show scene",
+                "what is in the scene",
+                "info de escena",
+                "resumen de escena",
+            ]
+        ):
             return {"tool": "get_scene_info", "params": {}}
 
         if text.startswith("object info "):
-            return {"tool": "get_object_info", "params": {"name": original[len("object info "):].strip()}}
+            return {"tool": "get_object_info", "params": {"name": original[len("object info ") :].strip()}}
         if text.startswith("info objeto "):
-            return {"tool": "get_object_info", "params": {"name": original[len("info objeto "):].strip()}}
+            return {"tool": "get_object_info", "params": {"name": original[len("info objeto ") :].strip()}}
 
         if any(phrase in text for phrase in ["create a chair", "create chair", "crea una silla", "crear una silla"]):
             return {"tool": "create_prop_blockout", "params": {"prop_type": "chair", "collection_name": "MCP_Chair"}}
         if any(phrase in text for phrase in ["create a table", "create table", "create prop table", "crea una mesa", "crear una mesa"]):
             return {"tool": "create_prop_blockout", "params": {"prop_type": "table", "collection_name": "MCP_Table"}}
 
-        if any(phrase in text for phrase in ["create punk character", "create punk character from references", "create a punk character", "crea un personaje punk", "crear un personaje punk"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "create punk character from references",
+                "create a punk character from references",
+                "create punk character",
+                "create a punk character",
+                "crea un personaje punk",
+                "crear un personaje punk",
+            ]
+        ):
             return {
                 "tool": "create_character_from_references",
                 "params": {
@@ -118,29 +132,84 @@ class BlenderMCPAdapter:
                 },
             }
 
-        if any(phrase in text for phrase in ["review character", "review the character", "review character against references", "revisa el personaje", "revisa personaje"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "review character",
+                "review the character",
+                "review character against references",
+                "revisa el personaje",
+                "revisa personaje",
+            ]
+        ):
             return {"tool": "review_and_fix_character", "params": {"strength": 0.35}}
 
-        if any(phrase in text for phrase in ["fix proportions", "fix character proportions", "arregla proporciones", "arregla las proporciones", "corrige proporciones"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "fix proportions",
+                "fix character proportions",
+                "arregla proporciones",
+                "arregla las proporciones",
+                "corrige proporciones",
+            ]
+        ):
             return {"tool": "apply_character_proportion_fixes", "params": {"strength": 0.35}}
 
-        if any(phrase in text for phrase in ["create shop scene", "create a small shop scene", "create a shop scene", "crea una escena de tienda", "crea una tienda"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "create shop scene",
+                "create a small shop scene",
+                "create a shop scene",
+                "crea una escena de tienda",
+                "crea una tienda",
+            ]
+        ):
             return {"tool": "create_shop_scene", "params": {"collection_name": "MCP_Shop_Scene"}}
 
-        if any(phrase in text for phrase in ["create bedroom blockout", "create a bedroom blockout", "crea un dormitorio", "crea un bloque de dormitorio", "crea una habitación"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "create bedroom blockout",
+                "create a bedroom blockout",
+                "crea un dormitorio",
+                "crea un bloque de dormitorio",
+                "crea una habitación",
+                "crea una habitacion",
+            ]
+        ):
             return {"tool": "create_environment_layout", "params": {"layout_type": "room", "collection_name": "MCP_Bedroom_Blockout"}}
 
-        if any(phrase in text for phrase in ["create room blockout", "create environment layout", "room layout", "environment layout", "crea un cuarto", "crea un layout de entorno", "layout de entorno"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "create room blockout",
+                "create environment layout",
+                "room layout",
+                "environment layout",
+                "crea un cuarto",
+                "crea un layout de entorno",
+                "layout de entorno",
+            ]
+        ):
             return {"tool": "create_environment_layout", "params": {"layout_type": "room", "collection_name": "MCP_Room_Blockout"}}
 
-        if any(phrase in text for phrase in ["create street layout", "create street blockout", "create a street layout", "create a street blockout", "crea una calle", "crea un layout de calle", "crea un bloque de calle"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "create street layout",
+                "create street blockout",
+                "create a street layout",
+                "create a street blockout",
+                "crea una calle",
+                "crea un layout de calle",
+                "crea un bloque de calle",
+            ]
+        ):
             return {
                 "error": "tool_not_implemented",
-                "suggestions": [
-                    {"tool": "create_environment_layout", "params": {"layout_type": "corridor", "collection_name": "MCP_Corridor_Blockout"}},
-                    {"tool": "create_environment_layout", "params": {"layout_type": "shop", "collection_name": "MCP_Shop_Scene"}},
-                    {"tool": "create_environment_layout", "params": {"layout_type": "room", "collection_name": "MCP_Room_Blockout"}},
-                ],
+                "suggestions": self._tool_suggestions("create_street_blockout"),
             }
 
         raise ValueError(f"Could not route prompt: {prompt}")
@@ -184,7 +253,11 @@ class BlenderMCPAdapter:
         elif scene_type in {"room", "bedroom", "interior", "cuarto", "habitacion", "habitación", "dormitorio"}:
             created = self.call_tool("create_environment_layout", {"layout_type": "room", "collection_name": "MCP_Room_Workflow"})
         else:
-            raise ValueError("Environment workflow currently supports room/bedroom and shop. Street is not implemented server-side.")
+            return {
+                "error": "tool_not_implemented",
+                "message": "Environment workflow currently supports room/bedroom and shop. Street is not implemented server-side.",
+                "suggestions": self._tool_suggestions("create_street_blockout"),
+            }
         materials = self.call_tool("apply_environment_materials", {})
         return {
             "workflow": "environment",
@@ -223,7 +296,7 @@ class BlenderMCPAdapter:
             sys.stdout.flush()
 
     def _call_backend(self, tool_name: str, params: dict[str, Any]):
-        if tool_name not in SERVER_TOOL_NAMES:
+        if tool_name not in CALLABLE_TOOL_NAMES:
             raise ValueError(f"Tool is not implemented on the Blender server: {tool_name}")
         normalized = self._normalize_params(tool_name, params)
         LOGGER.info(
@@ -397,7 +470,7 @@ class BlenderMCPAdapter:
             return [
                 {"tool": "create_environment_layout", "params": {"layout_type": "corridor", "collection_name": "MCP_Corridor_Blockout"}},
                 {"tool": "create_environment_layout", "params": {"layout_type": "room", "collection_name": "MCP_Room_Blockout"}},
-                {"tool": "create_shop_scene", "params": {"collection_name": "MCP_Shop_Scene"}},
+                {"tool": "create_environment_layout", "params": {"layout_type": "shop", "collection_name": "MCP_Shop_Scene"}},
             ]
         return []
 

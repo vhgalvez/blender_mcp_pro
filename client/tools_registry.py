@@ -3,7 +3,7 @@ TOOLS = [
         "name": "get_scene_info",
         "domain": "scene",
         "availability": "server",
-        "description": "Get a compact summary of the current Blender scene.",
+        "description": "Get a compact summary of the current Blender scene. Obtiene un resumen compacto de la escena actual.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -14,7 +14,7 @@ TOOLS = [
         "name": "get_object_info",
         "domain": "scene",
         "availability": "server",
-        "description": "Get transform, visibility, materials, and mesh stats for a Blender object by name.",
+        "description": "Get transform, visibility, materials, and mesh stats for a Blender object by name. Obtiene transformaciones, materiales y estadisticas de malla por nombre.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -31,7 +31,7 @@ TOOLS = [
         "name": "get_viewport_screenshot",
         "domain": "scene",
         "availability": "server",
-        "description": "Capture a screenshot of the current 3D viewport.",
+        "description": "Capture a screenshot of the current 3D viewport. Captura una imagen del viewport 3D actual.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -56,18 +56,7 @@ TOOLS = [
         "name": "get_telemetry_consent",
         "domain": "scene",
         "availability": "server",
-        "description": "Read the current telemetry consent flag from Blender add-on preferences.",
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "list_collections",
-        "domain": "scene",
-        "availability": "unavailable",
-        "description": "Planned future helper. The current Blender server does not implement collection listing as a command.",
+        "description": "Read the telemetry consent flag from Blender add-on preferences. Lee el consentimiento de telemetria del add-on.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -78,7 +67,7 @@ TOOLS = [
         "name": "load_character_references",
         "domain": "character",
         "availability": "server",
-        "description": "Load front and side reference sheets, with optional back sheet, from safe local input paths.",
+        "description": "Load front and side reference sheets, with optional back sheet, from safe local input paths. Carga referencias frontales, laterales y opcionalmente traseras.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -94,7 +83,7 @@ TOOLS = [
         "name": "clear_character_references",
         "domain": "character",
         "availability": "server",
-        "description": "Remove loaded character references from the scene.",
+        "description": "Remove loaded character references from the scene. Elimina las referencias de personaje cargadas en la escena.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -102,32 +91,10 @@ TOOLS = [
         },
     },
     {
-        "name": "create_character_from_references",
-        "domain": "character",
-        "availability": "adapter_workflow",
-        "description": "Adapter workflow that chains reference loading, blockout, hair, face, and materials using real server commands.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "reference_dir": {"type": "string", "description": "Directory containing front/back/profile sheets."},
-                "front": {"type": "string", "description": "Optional explicit front image path."},
-                "side": {"type": "string", "description": "Optional explicit side/profile image path."},
-                "back": {"type": "string", "description": "Optional explicit back image path."},
-                "height": {"type": "number", "description": "Target character height."},
-                "blockout_collection_name": {"type": "string", "description": "Optional collection for the blockout."},
-                "detail_collection_name": {"type": "string", "description": "Optional collection for face and hair details."},
-                "spike_count": {"type": "integer", "description": "Optional stylized hair spike count."},
-                "add_piercings": {"type": "boolean", "description": "Whether to add stylized piercings."},
-                "include_metal": {"type": "boolean", "description": "Whether to include metallic accents."},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
         "name": "create_character_blockout",
         "domain": "character",
         "availability": "server",
-        "description": "Create a stylized cartoon character blockout.",
+        "description": "Create a stylized cartoon character blockout. Crea un blockout de personaje caricaturesco y estilizado.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -141,7 +108,7 @@ TOOLS = [
         "name": "apply_character_symmetry",
         "domain": "character",
         "availability": "server",
-        "description": "Apply mirror symmetry to current character meshes.",
+        "description": "Apply mirror symmetry to current character meshes. Aplica simetria espejo a las mallas del personaje.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -160,7 +127,7 @@ TOOLS = [
         "name": "build_character_hair",
         "domain": "character",
         "availability": "server",
-        "description": "Build stylized punk-like hair for the current character blockout.",
+        "description": "Build stylized punk-like hair for the current character blockout. Construye pelo estilizado tipo punk para el personaje actual.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -174,7 +141,7 @@ TOOLS = [
         "name": "build_character_face",
         "domain": "character",
         "availability": "server",
-        "description": "Build stylized face details for the current character blockout.",
+        "description": "Build stylized face details for the current character blockout. Construye detalles faciales estilizados para el personaje.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -188,7 +155,7 @@ TOOLS = [
         "name": "apply_character_materials",
         "domain": "character",
         "availability": "server",
-        "description": "Apply the built-in stylized character materials.",
+        "description": "Apply the built-in stylized character materials. Aplica materiales estilizados integrados al personaje.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -201,7 +168,7 @@ TOOLS = [
         "name": "capture_character_review",
         "domain": "character",
         "availability": "server",
-        "description": "Capture front and side review screenshots for the current character.",
+        "description": "Capture front and side review screenshots for the current character. Captura vistas de revision frontal y lateral del personaje.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -212,7 +179,7 @@ TOOLS = [
         "name": "compare_character_with_references",
         "domain": "character",
         "availability": "server",
-        "description": "Compare the current stylized character with loaded references using silhouette heuristics.",
+        "description": "Compare the current character with loaded references using silhouette heuristics. Compara el personaje actual con las referencias usando heuristicas.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -223,7 +190,7 @@ TOOLS = [
         "name": "apply_character_proportion_fixes",
         "domain": "character",
         "availability": "server",
-        "description": "Apply proportional fixes to the active character using a comparison report or explicit deltas.",
+        "description": "Apply proportional fixes to the active character using a comparison report or explicit deltas. Aplica correcciones de proporcion al personaje activo.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -235,23 +202,10 @@ TOOLS = [
         },
     },
     {
-        "name": "review_and_fix_character",
-        "domain": "character",
-        "availability": "adapter_workflow",
-        "description": "Adapter workflow that captures review screenshots, compares the character to references, and applies a basic fix pass.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "strength": {"type": "number", "description": "Fix strength from 0.0 to 1.0."},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
         "name": "create_prop_blockout",
         "domain": "props",
         "availability": "server",
-        "description": "Create a stylized prop blockout such as a chair, table, crate, or weapon.",
+        "description": "Create a stylized prop blockout such as a chair, table, crate, or weapon. Crea un blockout de prop como silla, mesa, caja o arma.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -270,7 +224,7 @@ TOOLS = [
         "name": "apply_prop_symmetry",
         "domain": "props",
         "availability": "server",
-        "description": "Apply mirror symmetry to current prop meshes.",
+        "description": "Apply mirror symmetry to current prop meshes. Aplica simetria espejo a props actuales.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -289,7 +243,7 @@ TOOLS = [
         "name": "apply_prop_materials",
         "domain": "props",
         "availability": "server",
-        "description": "Apply simple materials to the current prop blockout.",
+        "description": "Apply simple materials to the current prop blockout. Aplica materiales simples al prop actual.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -302,7 +256,7 @@ TOOLS = [
         "name": "create_environment_layout",
         "domain": "environment",
         "availability": "server",
-        "description": "Create an environment layout such as a room, corridor, shop, or kiosk.",
+        "description": "Create an environment layout such as a room, corridor, shop, or kiosk. Crea un layout de entorno como habitacion, pasillo, tienda o kiosco.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -321,7 +275,7 @@ TOOLS = [
         "name": "apply_environment_materials",
         "domain": "environment",
         "availability": "server",
-        "description": "Apply simple materials to the active environment layout.",
+        "description": "Apply simple materials to the active environment layout. Aplica materiales simples al entorno activo.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -329,49 +283,10 @@ TOOLS = [
         },
     },
     {
-        "name": "create_shop_scene",
-        "domain": "environment",
-        "availability": "adapter_workflow",
-        "description": "Adapter workflow that creates a shop layout and applies environment materials using real server commands.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "collection_name": {"type": "string", "description": "Optional destination collection name."},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "create_room_blockout",
-        "domain": "environment",
-        "availability": "adapter_alias",
-        "description": "Adapter alias that maps to the real server tool create_environment_layout with layout_type='room'.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "collection_name": {"type": "string", "description": "Optional destination collection name."},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "create_street_blockout",
-        "domain": "environment",
-        "availability": "unavailable",
-        "description": "Planned future helper. The current server does not implement a real street blockout tool.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "collection_name": {"type": "string", "description": "Optional destination collection name."},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
         "name": "get_polyhaven_status",
         "domain": "integrations",
         "availability": "server",
-        "description": "Get the Poly Haven integration status from Blender add-on settings.",
+        "description": "Get the Poly Haven integration status from Blender settings. Obtiene el estado de integracion de Poly Haven.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -382,7 +297,7 @@ TOOLS = [
         "name": "get_hyper3d_status",
         "domain": "integrations",
         "availability": "server",
-        "description": "Get the Hyper3D / Rodin integration status from Blender add-on settings.",
+        "description": "Get the Hyper3D or Rodin integration status from Blender settings. Obtiene el estado de Hyper3D o Rodin.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -393,7 +308,7 @@ TOOLS = [
         "name": "get_sketchfab_status",
         "domain": "integrations",
         "availability": "server",
-        "description": "Get the Sketchfab integration status from Blender add-on settings.",
+        "description": "Get the Sketchfab integration status from Blender settings. Obtiene el estado de integracion de Sketchfab.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -404,7 +319,7 @@ TOOLS = [
         "name": "get_hunyuan3d_status",
         "domain": "integrations",
         "availability": "server",
-        "description": "Get the Hunyuan3D integration status from Blender add-on settings.",
+        "description": "Get the Hunyuan3D integration status from Blender settings. Obtiene el estado de Hunyuan3D.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -415,7 +330,7 @@ TOOLS = [
         "name": "get_polyhaven_categories",
         "domain": "integrations",
         "availability": "server",
-        "description": "Get Poly Haven categories for hdris, textures, models, or all.",
+        "description": "Get Poly Haven categories for hdris, textures, models, or all. Obtiene categorias de Poly Haven.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -433,7 +348,7 @@ TOOLS = [
         "name": "search_polyhaven_assets",
         "domain": "integrations",
         "availability": "server",
-        "description": "Search Poly Haven assets through the current Blender backend integration.",
+        "description": "Search Poly Haven assets through the Blender backend integration. Busca assets en Poly Haven desde Blender.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -454,7 +369,7 @@ TOOLS = [
         "name": "download_polyhaven_asset",
         "domain": "integrations",
         "availability": "server",
-        "description": "Download and import a Poly Haven asset through Blender. Requires Poly Haven to be enabled in add-on settings.",
+        "description": "Download and import a Poly Haven asset through Blender. Descarga e importa un asset de Poly Haven.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -471,7 +386,7 @@ TOOLS = [
         "name": "set_texture",
         "domain": "integrations",
         "availability": "server",
-        "description": "Apply a previously imported texture set to a Blender object.",
+        "description": "Apply a previously imported texture set to a Blender object. Aplica una textura importada a un objeto de Blender.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -486,7 +401,7 @@ TOOLS = [
         "name": "create_rodin_job",
         "domain": "integrations",
         "availability": "server",
-        "description": "Create a Hyper3D / Rodin generation job. Requires Hyper3D to be enabled and configured.",
+        "description": "Create a Hyper3D or Rodin generation job. Crea un trabajo de generacion Hyper3D o Rodin.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -501,7 +416,7 @@ TOOLS = [
         "name": "poll_rodin_job_status",
         "domain": "integrations",
         "availability": "server",
-        "description": "Poll a Hyper3D / Rodin generation job.",
+        "description": "Poll a Hyper3D or Rodin generation job. Consulta el estado de un trabajo de Hyper3D o Rodin.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -515,7 +430,7 @@ TOOLS = [
         "name": "import_generated_asset",
         "domain": "integrations",
         "availability": "server",
-        "description": "Import a generated Hyper3D / Rodin asset into Blender.",
+        "description": "Import a generated Hyper3D or Rodin asset into Blender. Importa un asset generado por Hyper3D o Rodin.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -531,7 +446,7 @@ TOOLS = [
         "name": "search_sketchfab_models",
         "domain": "integrations",
         "availability": "server",
-        "description": "Search Sketchfab models through the Blender backend. Requires Sketchfab to be enabled and configured.",
+        "description": "Search Sketchfab models through the Blender backend. Busca modelos de Sketchfab desde Blender.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -548,7 +463,7 @@ TOOLS = [
         "name": "get_sketchfab_model_preview",
         "domain": "integrations",
         "availability": "server",
-        "description": "Get preview information for a Sketchfab model UID.",
+        "description": "Get preview information for a Sketchfab model UID. Obtiene informacion previa de un modelo de Sketchfab.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -562,7 +477,7 @@ TOOLS = [
         "name": "download_sketchfab_model",
         "domain": "integrations",
         "availability": "server",
-        "description": "Download and import a Sketchfab model into Blender.",
+        "description": "Download and import a Sketchfab model into Blender. Descarga e importa un modelo de Sketchfab.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -578,7 +493,7 @@ TOOLS = [
         "name": "create_hunyuan_job",
         "domain": "integrations",
         "availability": "server",
-        "description": "Create a Hunyuan3D generation job. Requires Hunyuan3D to be enabled in Blender.",
+        "description": "Create a Hunyuan3D generation job. Crea un trabajo de generacion Hunyuan3D.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -592,7 +507,7 @@ TOOLS = [
         "name": "poll_hunyuan_job_status",
         "domain": "integrations",
         "availability": "server",
-        "description": "Poll a Hunyuan3D official API generation job.",
+        "description": "Poll a Hunyuan3D official API generation job. Consulta el estado de un trabajo de Hunyuan3D.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -606,7 +521,7 @@ TOOLS = [
         "name": "import_generated_asset_hunyuan",
         "domain": "integrations",
         "availability": "server",
-        "description": "Download and import a generated Hunyuan asset from a ZIP URL.",
+        "description": "Download and import a generated Hunyuan asset from a ZIP URL. Descarga e importa un asset generado por Hunyuan.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -617,4 +532,34 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "list_collections",
+        "domain": "scene",
+        "availability": "unavailable",
+        "description": "Planned future helper. The current Blender server does not implement collection listing as a command.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "create_street_blockout",
+        "domain": "environment",
+        "availability": "unavailable",
+        "description": "Planned future helper. The current Blender server does not implement a real street blockout tool.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "collection_name": {"type": "string", "description": "Optional destination collection name."},
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
+
+TOOLS_BY_NAME = {tool["name"]: tool for tool in TOOLS}
+CALLABLE_TOOLS = [tool for tool in TOOLS if tool["availability"] == "server"]
+CALLABLE_TOOL_NAMES = {tool["name"] for tool in CALLABLE_TOOLS}
+UNAVAILABLE_TOOLS = [tool for tool in TOOLS if tool["availability"] == "unavailable"]
+UNAVAILABLE_TOOL_NAMES = {tool["name"] for tool in UNAVAILABLE_TOOLS}

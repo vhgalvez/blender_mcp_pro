@@ -1,6 +1,7 @@
 import json
 
 from mcp_adapter import BlenderMCPAdapter
+from tools_registry import CALLABLE_TOOLS
 
 
 def print_json(payload):
@@ -11,7 +12,7 @@ def help_payload():
     return {
         "commands": {
             "help": "Show CLI help.",
-            "tools": "List available tools.",
+            "tools": "List callable server tools.",
             "quit": "Exit the CLI.",
             "raw <tool_name> <json_params>": "Call a tool directly with JSON params.",
         },
@@ -36,16 +37,28 @@ def help_payload():
 def main():
     adapter = BlenderMCPAdapter()
     tools = adapter.list_tools()
+    callable_tools = [tool["name"] for tool in CALLABLE_TOOLS]
 
     print_json(
         {
             "status": "ready",
             "message": "Blender MCP agent CLI started",
-            "tool_count": len(tools),
+            "tool_count": len(callable_tools),
             "commands": ["help", "tools", "quit", "raw <tool_name> <json_params>"],
         }
     )
-    print_json({"available_tools": [tool["name"] for tool in tools]})
+    print_json(
+        {
+            "callable_server_tools": callable_tools,
+            "prompt_helpers": [
+                "create punk character from references",
+                "crea un personaje punk",
+                "create shop scene",
+                "review character",
+                "revisa el personaje",
+            ],
+        }
+    )
 
     while True:
         try:
@@ -64,7 +77,7 @@ def main():
             print_json(help_payload())
             continue
         if lowered == "tools":
-            print_json({"tools": tools})
+            print_json({"tools": [tool for tool in tools if tool["availability"] == "server"]})
             continue
 
         try:

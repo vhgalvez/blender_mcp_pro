@@ -1,13 +1,16 @@
 {
   "servers": {
-    "blender": {
+    "blender-mcp-pro": {
       "type": "stdio",
       "command": "python",
-      "args": ["client/mcp_stdio_server.py"],
+      "args": [
+        "client/mcp_stdio_server.py"
+      ],
+      "cwd": "${workspaceFolder}",
       "env": {
         "BLENDER_HOST": "127.0.0.1",
         "BLENDER_PORT": "9876",
-        "BLENDER_TOKEN": "${input:blenderToken}"
+        "BLENDER_TOKEN": "replace-with-your-token"
       }
     }
   }
