@@ -63,7 +63,8 @@ def send_command(command: str, params: dict[str, Any] | None = None) -> dict[str
         auth_raw = recv_line(s)
         print("AUTH:", auth_raw)
         if not auth_raw:
-            raise RuntimeError("El servidor cerró la conexión sin responder al auth.")
+            raise RuntimeError(
+                "El servidor cerró la conexión sin responder al auth.")
 
         auth_response = parse_json_line(auth_raw)
         raise_if_not_ok(auth_response, "Auth falló")
@@ -79,7 +80,8 @@ def send_command(command: str, params: dict[str, Any] | None = None) -> dict[str
         result_raw = recv_line(s)
         print("RESULT:", result_raw)
         if not result_raw:
-            raise RuntimeError("El servidor cerró la conexión sin responder al comando.")
+            raise RuntimeError(
+                "El servidor cerró la conexión sin responder al comando.")
 
         result_response = parse_json_line(result_raw)
         raise_if_not_ok(result_response, "Comando falló")
