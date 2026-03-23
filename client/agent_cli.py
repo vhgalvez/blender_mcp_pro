@@ -12,7 +12,7 @@ def help_payload():
     return {
         "commands": {
             "help": "Show CLI help.",
-            "tools": "List callable server tools.",
+            "tools": "List callable MCP tools, including safe workflow helpers.",
             "quit": "Exit the CLI.",
             "raw <tool_name> <json_params>": "Call a tool directly with JSON params.",
         },
@@ -52,7 +52,7 @@ def main():
     )
     print_json(
         {
-            "callable_server_tools": callable_tools,
+            "callable_mcp_tools": callable_tools,
             "prompt_helpers": [
                 "create punk character",
                 "crea un personaje punk",
@@ -81,7 +81,7 @@ def main():
             print_json(help_payload())
             continue
         if lowered == "tools":
-            print_json({"tools": [tool for tool in tools if tool["availability"] == "server"]})
+            print_json({"tools": [tool for tool in tools if tool["availability"] in {"server", "workflow"}]})
             continue
 
         try:

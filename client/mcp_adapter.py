@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -180,10 +179,12 @@ class BlenderMCPAdapter:
                 "create a stylized bedroom",
                 "create a bedroom",
                 "create a room",
+                "create a scene",
                 "create a small shop",
                 "create a shop",
                 "crea una habitación",
                 "crea una habitacion",
+                "crea una escena",
                 "crea una tienda",
                 "hazme una tienda",
                 "hazme una habitación",
@@ -411,6 +412,8 @@ class BlenderMCPAdapter:
 
         if "lamp" in text or "lámpara" in text or "lampara" in text:
             plan["lights"].append({"light_type": "POINT", "name": "MCP_Lamp", "location": [2.0, -2.0, 3.0], "energy": 1500.0})
+        if any(keyword in text for keyword in ["warm light", "warm lighting", "luz cálida", "luz calida", "luz caliente"]):
+            plan["lights"].append({"light_type": "AREA", "name": "MCP_Warm_Light", "location": [1.5, -2.5, 2.8], "rotation": [1.1, 0.0, 0.7], "energy": 1800.0, "color": [1.0, 0.82, 0.62]})
         if "sunset" in text or "atardecer" in text:
             plan["lights"].append({"light_type": "SUN", "name": "MCP_Sunset_Sun", "rotation": [0.9, 0.0, 0.6], "energy": 2.5, "color": [1.0, 0.65, 0.45]})
         elif not plan["lights"]:

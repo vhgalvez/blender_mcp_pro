@@ -176,13 +176,23 @@ Responsabilidades:
 - `client/` permanece fuera de Blender y consume el servidor TCP autenticado.
 - `client/blender_client.py` mantiene la compatibilidad con el cliente TCP actual.
 - `client/mcp_stdio_server.py` expone un servidor MCP stdio local que VS Code puede lanzar.
-- `client/agent_cli.py` y `client/mcp_adapter.py` ayudan a un agente local a usar herramientas reales del servidor sin cambiar la arquitectura del add-on.
+- `client/agent_cli.py` y `client/mcp_adapter.py` añaden una capa generativa segura sobre primitivas y herramientas reales del servidor sin cambiar la arquitectura del add-on.
+
+La arquitectura se organiza en dos capas:
+
+- `Primitive tools`: operaciones pequeñas y confiables como inspeccionar escena, crear primitivas, crear blockouts, mover objetos, aplicar materiales, crear luces y trabajar con integraciones reales.
+- `Generative tools`: helpers del bridge como `generate_scene_plan`, `apply_scene_plan`, `build_scene_from_description` y `build_character_from_description`, que convierten lenguaje natural en planes seguros y luego llaman a primitives reales.
 
 ---
 
 ## Supported MCP Tools
 
-El bridge MCP stdio expone solo herramientas reales del servidor de Blender. No anuncia placeholders ni workflows locales como si fueran tools MCP.
+El bridge MCP stdio expone dos tipos de tools:
+
+- tools primitivas respaldadas por comandos reales del servidor de Blender
+- tools generativas del bridge que usan solamente esas primitivas y comandos reales
+
+Los placeholders no implementados no se anuncian como tools utilizables.
 
 ### Primitive Scene Tools
 
@@ -220,6 +230,8 @@ El bridge MCP stdio expone solo herramientas reales del servidor de Blender. No 
 - `apply_character_proportion_fixes`
 
 ### Assets / Integrations
+
+Estas tools son reales, pero dependen de que la integracion correspondiente este activada y configurada en Blender.
 
 - `get_polyhaven_status`
 - `get_hyper3d_status`
@@ -330,6 +342,7 @@ Importante:
 - la capa generativa usa solo operaciones seguras ya implementadas
 - si una peticion no puede satisfacerse con las herramientas actuales, devuelve una limitacion estructurada
 - no ejecuta Python arbitrario
+- prioriza menos operaciones pero correctas frente a prometer capacidades no implementadas
 
 ---
 
