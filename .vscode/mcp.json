@@ -10,7 +10,7 @@
       "env": {
         "BLENDER_HOST": "127.0.0.1",
         "BLENDER_PORT": "9876",
-        "BLENDER_TOKEN": "replace-with-your-token"
+        "BLENDER_TOKEN": "123456"
       }
     }
   }
