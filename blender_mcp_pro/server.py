@@ -200,7 +200,7 @@ class BlenderMCPServer:
             return make_jsonrpc_result(
                 request_id,
                 {
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": "2025-06-18",
                     "capabilities": {"tools": {}},
                     "serverInfo": {"name": "blender-mcp-pro-tcp", "version": "1.0.0"},
                 },

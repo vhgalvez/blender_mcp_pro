@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from datetime import date
 from typing import Any
 
 from blender_client import BlenderClientError
@@ -12,12 +13,21 @@ from tools_registry import CALLABLE_TOOLS, TOOLS_BY_NAME
 SERVER_NAME = "blender-mcp-pro"
 SERVER_VERSION = "1.1.0"
 
-# Keep this conservative for current interoperability.
-# MCP version negotiation happens during initialize.
+# Ordered newest-first so initialize can pick the best mutual date-based version.
 SUPPORTED_PROTOCOL_VERSIONS = (
+    "2025-11-25",
     "2025-06-18",
     "2025-03-26",
 )
+
+JSONRPC_PARSE_ERROR = -32700
+JSONRPC_INVALID_REQUEST = -32600
+JSONRPC_METHOD_NOT_FOUND = -32601
+JSONRPC_INVALID_PARAMS = -32602
+JSONRPC_INTERNAL_ERROR = -32603
+
+SERVER_NOT_INITIALIZED = -32002
+SERVER_SHUTDOWN = -32000
 
 
 def configure_logging() -> logging.Logger:
@@ -27,6 +37,7 @@ def configure_logging() -> logging.Logger:
     ).upper()
     level = getattr(logging, level_name, logging.INFO)
 
+    # Stdio transport must keep stdout reserved for JSON-RPC messages only.
     logging.basicConfig(
         level=level,
         stream=sys.stderr,
@@ -37,15 +48,20 @@ def configure_logging() -> logging.Logger:
 
 LOGGER = configure_logging()
 
+SUPPORTED_PROTOCOL_DATES = tuple(date.fromisoformat(version) for version in SUPPORTED_PROTOCOL_VERSIONS)
+LATEST_SUPPORTED_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
+
 
 class MCPStdioServer:
     def __init__(self) -> None:
         self.adapter = BlenderMCPAdapter()
-        self.initialized = False
+        self.initialize_completed = False
+        self.client_initialized = False
         self.shutdown_requested = False
         self.exit_requested = False
         self.negotiated_protocol_version: str | None = None
-        self.client_info: dict[str, Any] | None = None
+        self.client_info: dict[str, Any] = {}
+        self.client_capabilities: dict[str, Any] = {}
 
     def run(self) -> None:
         LOGGER.info(
@@ -67,92 +83,160 @@ class MCPStdioServer:
 
             try:
                 message = json.loads(line)
-                if not isinstance(message, dict):
-                    raise ValueError("MCP message must be a JSON object")
             except Exception as exc:
                 LOGGER.error("invalid_json error=%s", exc)
-                self._write_error(None, -32700, f"Parse error: {exc}")
+                self._write_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc}")
+                continue
+
+            if not isinstance(message, dict):
+                LOGGER.error("invalid_message_type type=%s", type(message).__name__)
+                self._write_error(None, JSONRPC_INVALID_REQUEST, "Invalid Request: message must be an object")
                 continue
 
             LOGGER.debug("request %s", json.dumps(message, ensure_ascii=False))
             self._handle_message(message)
 
     def _handle_message(self, message: dict[str, Any]) -> None:
+        is_request = "id" in message
+        request_id = message.get("id")
         jsonrpc = message.get("jsonrpc")
         method = message.get("method")
-        request_id = message.get("id")
-        params = message.get("params", {}) or {}
+        params = message.get("params")
 
         if jsonrpc != "2.0":
-            self._write_error(request_id, -32600, "Invalid Request: jsonrpc must be '2.0'")
+            self._write_error_if_request(
+                is_request,
+                request_id,
+                JSONRPC_INVALID_REQUEST,
+                "Invalid Request: jsonrpc must be '2.0'",
+            )
             return
 
+        if not isinstance(method, str) or not method:
+            self._write_error_if_request(
+                is_request,
+                request_id,
+                JSONRPC_INVALID_REQUEST,
+                "Invalid Request: method must be a non-empty string",
+            )
+            return
+
+        if params is None:
+            params = {}
+
         if not isinstance(params, dict):
-            self._write_error(request_id, -32602, "Invalid params: params must be an object")
+            self._write_error_if_request(
+                is_request,
+                request_id,
+                JSONRPC_INVALID_PARAMS,
+                "Invalid params: params must be an object",
+            )
             return
 
         try:
-            # Lifecycle: initialize must happen first.
             if method == "initialize":
-                self._handle_initialize(request_id, params)
+                self._handle_initialize(is_request, request_id, params)
+                return
+
+            if method == "ping":
+                if is_request:
+                    self._write_result(request_id, {})
                 return
 
             if method == "notifications/initialized":
-                if not self.initialized:
-                    LOGGER.warning("initialized_notification_before_initialize")
+                self._handle_initialized_notification()
                 return
 
             if method == "shutdown":
-                if not self.initialized:
-                    self._write_error(request_id, -32002, "Server not initialized")
-                    return
-                self.shutdown_requested = True
-                self._write_result(request_id, {})
+                self._handle_shutdown(is_request, request_id)
                 return
 
             if method == "exit":
-                self.exit_requested = True
+                self._handle_exit()
                 return
 
-            # After shutdown, only exit should be accepted.
             if self.shutdown_requested:
-                self._write_error(
+                self._write_error_if_request(
+                    is_request,
                     request_id,
-                    -32000,
+                    SERVER_SHUTDOWN,
                     "Server is shut down and only 'exit' is allowed",
                 )
                 return
 
-            if not self.initialized:
-                self._write_error(request_id, -32002, "Server not initialized")
-                return
-
-            if method == "ping":
-                self._write_result(request_id, {})
+            if not self.client_initialized:
+                self._write_error_if_request(
+                    is_request,
+                    request_id,
+                    SERVER_NOT_INITIALIZED,
+                    "Server not initialized",
+                )
                 return
 
             if method == "tools/list":
-                self._handle_tools_list(request_id)
+                self._handle_tools_list(is_request, request_id)
                 return
 
             if method == "tools/call":
-                self._handle_tools_call(request_id, params)
+                self._handle_tools_call(is_request, request_id, params)
                 return
 
-            self._write_error(request_id, -32601, f"Method not found: {method}")
+            if is_request:
+                self._write_error(request_id, JSONRPC_METHOD_NOT_FOUND, f"Method not found: {method}")
+            else:
+                LOGGER.info("ignored_notification method=%s", method)
         except Exception as exc:
             LOGGER.exception("request_failed method=%s", method)
-            self._write_error(request_id, -32000, str(exc))
+            self._write_error_if_request(
+                is_request,
+                request_id,
+                JSONRPC_INTERNAL_ERROR,
+                str(exc),
+            )
 
-    def _handle_initialize(self, request_id: Any, params: dict[str, Any]) -> None:
+    def _handle_initialize(self, is_request: bool, request_id: Any, params: dict[str, Any]) -> None:
+        if not is_request:
+            LOGGER.warning("ignored_initialize_notification")
+            return
+
+        if self.initialize_completed and not self.shutdown_requested:
+            self._write_error(
+                request_id,
+                JSONRPC_INVALID_REQUEST,
+                "Initialize may only be called once per session",
+            )
+            return
+
         client_protocol_version = params.get("protocolVersion")
+        client_capabilities = params.get("capabilities", {})
         client_info = params.get("clientInfo", {})
 
         if not isinstance(client_protocol_version, str):
             self._write_error(
                 request_id,
-                -32602,
+                JSONRPC_INVALID_PARAMS,
                 "Invalid params: protocolVersion must be a string",
+            )
+            return
+
+        if client_capabilities is None:
+            client_capabilities = {}
+        if client_info is None:
+            client_info = {}
+
+        if not isinstance(client_capabilities, dict):
+            self._write_error(
+                request_id,
+                JSONRPC_INVALID_PARAMS,
+                "Invalid params: capabilities must be an object",
+            )
+            return
+
+        if not isinstance(client_info, dict):
+            self._write_error(
+                request_id,
+                JSONRPC_INVALID_PARAMS,
+                "Invalid params: clientInfo must be an object",
             )
             return
 
@@ -160,18 +244,21 @@ class MCPStdioServer:
         if negotiated is None:
             self._write_error(
                 request_id,
-                -32000,
+                JSONRPC_INVALID_PARAMS,
                 f"Unsupported protocol version: {client_protocol_version}",
             )
             return
 
         self.negotiated_protocol_version = negotiated
-        self.client_info = client_info if isinstance(client_info, dict) else {}
-        self.initialized = True
+        self.client_info = client_info
+        self.client_capabilities = client_capabilities
+        self.initialize_completed = True
+        self.client_initialized = False
         self.shutdown_requested = False
+        self.exit_requested = False
 
         LOGGER.info(
-            "initialized client_protocol=%s negotiated_protocol=%s client_info=%s",
+            "initialize client_protocol=%s negotiated_protocol=%s client_info=%s",
             client_protocol_version,
             negotiated,
             json.dumps(self.client_info, ensure_ascii=False),
@@ -181,11 +268,7 @@ class MCPStdioServer:
             request_id,
             {
                 "protocolVersion": negotiated,
-                "capabilities": {
-                    "tools": {
-                        "listChanged": False,
-                    },
-                },
+                "capabilities": self._server_capabilities(),
                 "serverInfo": {
                     "name": SERVER_NAME,
                     "version": SERVER_VERSION,
@@ -197,14 +280,59 @@ class MCPStdioServer:
             },
         )
 
-    def _handle_tools_list(self, request_id: Any) -> None:
+    def _handle_initialized_notification(self) -> None:
+        if not self.initialize_completed:
+            LOGGER.warning("initialized_notification_before_initialize")
+            return
+
+        if self.shutdown_requested:
+            LOGGER.warning("initialized_notification_after_shutdown")
+            return
+
+        self.client_initialized = True
+        LOGGER.info(
+            "client_initialized negotiated_protocol=%s",
+            self.negotiated_protocol_version,
+        )
+
+    def _handle_shutdown(self, is_request: bool, request_id: Any) -> None:
+        if not is_request:
+            LOGGER.info("ignored_shutdown_notification")
+            return
+
+        if not self.initialize_completed:
+            self._write_error(request_id, SERVER_NOT_INITIALIZED, "Server not initialized")
+            return
+
+        # MCP stdio shutdown is usually stream closure; keep LSP-style shutdown/exit
+        # as a compatibility path for hosts that still send those messages.
+        self.shutdown_requested = True
+        self.client_initialized = False
+        self._write_result(request_id, {})
+
+    def _handle_exit(self) -> None:
+        self.exit_requested = True
+        LOGGER.info("exit_requested shutdown=%s", self.shutdown_requested)
+
+    def _handle_tools_list(self, is_request: bool, request_id: Any) -> None:
+        if not is_request:
+            LOGGER.info("ignored_tools_list_notification")
+            return
+
         tools = [self._mcp_tool_definition(tool) for tool in CALLABLE_TOOLS]
         LOGGER.info("tools_list count=%s", len(tools))
         self._write_result(request_id, {"tools": tools})
 
-    def _handle_tools_call(self, request_id: Any, params: dict[str, Any]) -> None:
+    def _handle_tools_call(self, is_request: bool, request_id: Any, params: dict[str, Any]) -> None:
+        if not is_request:
+            LOGGER.info("ignored_tools_call_notification")
+            return
+
         tool_name = params.get("name")
-        arguments = params.get("arguments", {}) or {}
+        arguments = params.get("arguments")
+
+        if arguments is None:
+            arguments = {}
 
         if not isinstance(tool_name, str) or not tool_name.strip():
             self._write_result(
@@ -302,16 +430,46 @@ class MCPStdioServer:
         }
 
     def _negotiate_protocol_version(self, client_version: str) -> str | None:
+        # MCP versions are calendar strings; prefer the exact match, otherwise
+        # negotiate to the newest server version that does not exceed the client.
+        try:
+            client_date = date.fromisoformat(client_version)
+        except ValueError:
+            return None
+
         if client_version in SUPPORTED_PROTOCOL_VERSIONS:
             return client_version
 
-        # Graceful fallback for common MCP clients.
-        # If the client sends something unsupported, we reject it explicitly.
-        return None
+        for supported_version, supported_date in zip(
+            SUPPORTED_PROTOCOL_VERSIONS,
+            SUPPORTED_PROTOCOL_DATES,
+            strict=True,
+        ):
+            if supported_date <= client_date:
+                return supported_version
+
+        return LATEST_SUPPORTED_PROTOCOL_VERSION
+
+    def _server_capabilities(self) -> dict[str, Any]:
+        return {
+            "tools": {
+                "listChanged": False,
+            },
+        }
+
+    def _write_error_if_request(
+        self,
+        is_request: bool,
+        request_id: Any,
+        code: int,
+        message: str,
+    ) -> None:
+        if is_request:
+            self._write_error(request_id, code, message)
+        else:
+            LOGGER.warning("notification_error code=%s message=%s", code, message)
 
     def _write_result(self, request_id: Any, result: dict[str, Any]) -> None:
-        if request_id is None:
-            return
         payload = {
             "jsonrpc": "2.0",
             "id": request_id,
