@@ -15,27 +15,37 @@ def help_payload():
             "quit": "Exit the CLI.",
             "raw <tool_name> <json_params>": "Call a tool directly with JSON params.",
         },
-        "examples": [
+        "prompt_examples": [
+            "scene info",
+            "info de escena",
+            "create a chair",
+            "crea una mesa",
             "create punk character from references",
+            "crea un personaje punk",
+            "review character",
+            "revisa el personaje",
+            "fix proportions",
+            "arregla proporciones",
             "create shop scene",
             "create bedroom blockout",
-            "review character",
-            "raw get_scene_info {}",
+            "create street blockout",
         ],
     }
 
 
 def main():
     adapter = BlenderMCPAdapter()
+    tools = adapter.list_tools()
 
     print_json(
         {
             "status": "ready",
             "message": "Blender MCP agent CLI started",
-            "tool_count": len(adapter.list_tools()),
+            "tool_count": len(tools),
             "commands": ["help", "tools", "quit", "raw <tool_name> <json_params>"],
         }
     )
+    print_json({"available_tools": [tool["name"] for tool in tools]})
 
     while True:
         try:
@@ -54,7 +64,7 @@ def main():
             print_json(help_payload())
             continue
         if lowered == "tools":
-            print_json({"tools": adapter.list_tools()})
+            print_json({"tools": tools})
             continue
 
         try:
@@ -65,12 +75,23 @@ def main():
                 tool_name = parts[1]
                 params = json.loads(parts[2])
                 result = adapter.call_tool(tool_name, params)
-                print_json({"tool": tool_name, "params": params, "result": result})
+                print_json(
+                    {
+                        "mode": "raw",
+                        "tool": tool_name,
+                        "params": params,
+                        "result": result,
+                    }
+                )
                 continue
 
-            call = adapter.route_prompt(user_input)
-            result = adapter.call_tool(call["tool"], call["params"])
-            print_json({"prompt": user_input, "call": call, "result": result})
+            route = adapter.route_prompt(user_input)
+            print_json({"mode": "routed", "prompt": user_input, "route": route})
+            if "error" in route:
+                continue
+
+            result = adapter.call_tool(route["tool"], route["params"])
+            print_json({"tool": route["tool"], "params": route["params"], "result": result})
         except Exception as exc:
             print_json({"error": str(exc)})
 

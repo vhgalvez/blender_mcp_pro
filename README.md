@@ -18,16 +18,20 @@ El código es intencionadamente pequeño y enfocado en un transporte seguro, edi
     - [Modo LAN Whitelist (opcional)](#modo-lan-whitelist-opcional)
   - [Quick Start](#quick-start)
   - [Architecture](#architecture)
-  - [Image-Guided Character Workflow](#image-guided-character-workflow)
-  - [Multipurpose Scope](#multipurpose-scope)
   - [Supported MCP Tools](#supported-mcp-tools)
+  - [Character Workflow](#character-workflow)
+  - [Environment Workflow](#environment-workflow)
+  - [Multipurpose Usage](#multipurpose-usage)
+  - [Client Directory Layout](#client-directory-layout)
   - [Instalación](#instalación)
   - [Uso Seguro](#uso-seguro)
     - [Mismo PC](#mismo-pc)
     - [LAN (opcional)](#lan-opcional)
   - [Puente MCP STDIO](#puente-mcp-stdio)
   - [Smoke Test](#smoke-test)
+  - [How To Run From The Repository Root](#how-to-run-from-the-repository-root)
   - [End-to-End Test](#end-to-end-test)
+  - [Troubleshooting](#troubleshooting)
   - [Modelo de Comandos](#modelo-de-comandos)
   - [Workflows](#workflows)
     - [Personajes](#personajes)
@@ -131,23 +135,15 @@ $env:BLENDER_PORT = "9876"
 $env:BLENDER_TOKEN = "tu_token"
 ```
 
-6. Ejecuta el bridge MCP:
+6. Ejecuta el cliente o la CLI desde este repositorio:
 
 ```powershell
-python client/mcp_adapter.py
+python client/smoke_test.py
+python client/agent_cli.py
 ```
 
-7. Haz el primer smoke test con `get_scene_info`.
-8. Haz el primer test con cambio real de escena con `create_prop_blockout`.
-
-Smoke test mínimo:
-
-```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"quick-start","version":"0.0.0"}}}
-{"jsonrpc":"2.0","method":"notifications/initialized"}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_scene_info","arguments":{}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_prop_blockout","arguments":{"prop_type":"table","collection_name":"MCP_QuickStart_Props"}}}
-```
+7. Usa `python client/smoke_test.py` para validar auth y comandos básicos.
+8. Usa `python client/agent_cli.py` para prompts libres y llamadas raw.
 
 ---
 
@@ -156,27 +152,27 @@ Smoke test mínimo:
 El flujo actual queda así:
 
 ```text
-Copilot / Codex MCP Client
+VS Code / CLI / Local AI Agent
             |
             v
-client/mcp_adapter.py
-(MCP STDIO bridge)
+client/
+(agent_cli.py, mcp_adapter.py, blender_client.py, smoke_test.py)
             |
             v
-client/blender_client.py
-(TCP auth client)
+Blender TCP Server
+(token-auth local socket)
             |
             v
 blender_mcp_pro add-on
-(Blender backend + TCP server + command execution)
+(addon.py, server.py, dispatcher.py, character_tools.py, integrations.py)
 ```
 
 Responsabilidades:
 
-- `blender_mcp_pro` dentro de Blender: UI, preferencias, token, validación de red y ejecución real de comandos.
-- `client/blender_client.py`: autenticación y llamadas al backend TCP existente.
-- `client/mcp_adapter.py`: servidor MCP STDIO compatible con clientes como Copilot/Codex.
-- cliente MCP externo: inicia el bridge y consume tools MCP estándar.
+- `blender_mcp_pro/` es lo único que se instala en Blender.
+- `client/` permanece fuera de Blender y consume el servidor TCP autenticado.
+- `client/blender_client.py` mantiene la compatibilidad con el cliente TCP actual.
+- `client/agent_cli.py` y `client/mcp_adapter.py` ayudan a un agente local a usar herramientas reales del servidor sin cambiar la arquitectura del add-on.
 
 ---
 
@@ -188,13 +184,21 @@ El toolkit local expone herramientas multipropósito agrupadas por dominio.
 
 - `get_scene_info`
 - `get_object_info`
+- `get_viewport_screenshot`
+- `get_telemetry_consent`
 - `list_collections`:
   placeholder preparado para futuro. El backend actual todavía no expone colecciones.
 
 ### Character
 
+- `load_character_references`
+- `clear_character_references`
 - `create_character_from_references`
 - `create_character_blockout`
+- `apply_character_symmetry`
+- `build_character_hair`
+- `build_character_face`
+- `apply_character_materials`
 - `capture_character_review`
 - `compare_character_with_references`
 - `apply_character_proportion_fixes`
@@ -203,6 +207,7 @@ El toolkit local expone herramientas multipropósito agrupadas por dominio.
 ### Props
 
 - `create_prop_blockout`
+- `apply_prop_symmetry`
 - `apply_prop_materials`
 
 ### Environment / Layout
@@ -215,9 +220,23 @@ El toolkit local expone herramientas multipropósito agrupadas por dominio.
 
 ### Assets / Integrations
 
+- `get_polyhaven_status`
+- `get_hyper3d_status`
+- `get_sketchfab_status`
+- `get_hunyuan3d_status`
+- `get_polyhaven_categories`
 - `search_polyhaven_assets`
 - `download_polyhaven_asset`
 - `set_texture`
+- `create_rodin_job`
+- `poll_rodin_job_status`
+- `import_generated_asset`
+- `search_sketchfab_models`
+- `get_sketchfab_model_preview`
+- `download_sketchfab_model`
+- `create_hunyuan_job`
+- `poll_hunyuan_job_status`
+- `import_generated_asset_hunyuan`
 
 Implementado hoy:
 
@@ -275,13 +294,16 @@ Atajos incluidos:
 
 - `create_shop_scene`
 - `create_room_blockout`
-- `create_street_blockout`
 
 Esto cubre casos útiles como:
 
 - room / bedroom blockouts
 - shop / interior layouts
-- street-like layouts usando el backend actual de corridor como aproximación local
+
+Importante:
+
+- `create_street_blockout` no está implementado realmente en el servidor actual.
+- si intentas usar un prompt de calle, el cliente devuelve `tool_not_implemented` y sugiere alternativas reales como `create_environment_layout` con `layout_type="corridor"`.
 
 ---
 
@@ -311,6 +333,18 @@ client/
 ├── smoke_test.py
 └── tools_registry.py
 ```
+
+---
+
+Lo que se instala en Blender:
+
+- solo la carpeta `blender_mcp_pro/`
+
+Lo que permanece fuera de Blender:
+
+- toda la carpeta `client/`
+
+No intentes instalar `client/` como add-on de Blender.
 
 ---
 
@@ -366,68 +400,34 @@ blender_mcp_pro.zip
 
 ## Puente MCP STDIO
 
-El complemento `blender_mcp_pro` sigue siendo el backend dentro de Blender. Su responsabilidad es:
+El backend real sigue siendo el add-on `blender_mcp_pro/` dentro de Blender:
 
-- exponer el servidor TCP local autenticado
-- validar red/token
-- ejecutar comandos de escena en el hilo principal de Blender
+- expone el servidor TCP local autenticado
+- valida red y token
+- ejecuta los comandos Blender en el hilo principal
 
-Ese backend **no es MCP nativo** para Copilot/Codex porque habla un protocolo NDJSON propio sobre socket TCP (`auth` + `command`) en lugar de MCP estándar por STDIO y JSON-RPC.
+El directorio `client/` es un consumidor externo de ese backend:
 
-Para resolverlo, el repositorio ahora incluye `client/mcp_adapter.py`, un puente MCP compacto que:
+- `blender_client.py` habla el protocolo TCP actual
+- `mcp_adapter.py` alinea prompts y tools con los comandos reales del servidor
+- `agent_cli.py` ofrece una CLI práctica para workflows iterativos
 
-- corre como servidor MCP por STDIO
-- lee `BLENDER_HOST`, `BLENDER_PORT` y `BLENDER_TOKEN`
-- se conecta al backend TCP ya existente del complemento
-- autentica primero
-- traduce `tools/call` de MCP a los comandos actuales de Blender
+La arquitectura correcta es:
 
-Herramientas MCP expuestas inicialmente:
-
-- `get_scene_info`
-- `get_object_info`
-- `load_character_references`
-- `clear_character_references`
-- `create_character_blockout`
-- `apply_character_symmetry`
-- `build_character_hair`
-- `build_character_face`
-- `apply_character_materials`
-- `capture_character_review`
-- `compare_character_with_references`
-- `apply_character_proportion_fixes`
-- `create_character_from_references`
-- `create_prop_blockout`
-- `apply_prop_materials`
-- `create_environment_layout`
-- `apply_environment_materials`
-- `get_polyhaven_status`
-- `search_polyhaven_assets`
-- `download_polyhaven_asset`
-- `set_texture`
-- `review_and_fix_character`
-- `create_shop_scene`
-
-### Uso
-
-1. Instala y habilita el complemento en Blender.
-2. Configura el **Auth Token** en preferencias.
-3. Inicia el servidor desde el panel del complemento.
-4. Configura tu cliente MCP para lanzar:
-
-```powershell
-python client/mcp_adapter.py
+```text
+VS Code / CLI / Agent
+        |
+        v
+client/
+        |
+        v
+Blender TCP server
+        |
+        v
+blender_mcp_pro/
 ```
 
-con estas variables de entorno:
-
-```powershell
-$env:BLENDER_HOST = "127.0.0.1"
-$env:BLENDER_PORT = "9876"
-$env:BLENDER_TOKEN = "tu_token"
-```
-
-El detalle exacto de configuración depende del cliente MCP, pero la idea es siempre la misma: Copilot/Codex debe arrancar este proceso STDIO, y este proceso reenviará cada tool call al servidor TCP autenticado del add-on.
+`client/` no forma parte de la instalación del add-on.
 
 ---
 
@@ -463,6 +463,8 @@ python client/smoke_test.py --with-character
 
 El script imprime `PASS` o `FAIL` por paso para que el primer diagnóstico local sea rápido.
 
+Si este test pasa, el backend TCP, el token auth y las llamadas básicas funcionan.
+
 ---
 
 ## How To Run From The Repository Root
@@ -484,21 +486,24 @@ CLI interactiva:
 - `quit`
 - `raw get_scene_info {}`
 - `create punk character from references`
+- `crea un personaje punk`
 - `create shop scene`
 - `create bedroom blockout`
+- `info de escena`
+- `crea una mesa`
 - `review the character`
 
 ---
 
 ## End-to-End Test
 
-Pasos exactos para validar el flujo completo `cliente MCP -> bridge STDIO -> backend TCP de Blender -> cambio en escena`:
+Pasos exactos para validar el flujo completo `cliente local -> client/ -> backend TCP de Blender -> cambio en escena`:
 
 1. Inicia Blender.
 2. Activa el complemento `Blender MCP`.
 3. Abre el panel del complemento y pulsa `Start Server`.
 4. En una terminal PowerShell, sitúate en este repositorio.
-5. Define las variables de entorno que usa el bridge:
+5. Define las variables de entorno que usa el cliente:
 
 ```powershell
 $env:BLENDER_HOST = "127.0.0.1"
@@ -506,38 +511,34 @@ $env:BLENDER_PORT = "9876"
 $env:BLENDER_TOKEN = "tu_token"
 ```
 
-6. Lanza el adaptador MCP por STDIO:
+6. Lanza la CLI local:
 
 ```powershell
-python client/mcp_adapter.py
+python client/agent_cli.py
 ```
 
-7. Desde tu cliente MCP, envía primero `initialize`, luego `notifications/initialized`, y después un primer smoke test con `tools/call` sobre `get_scene_info`.
+7. Prueba prompts en inglés o español:
 
-Ejemplo mínimo por STDIO:
-
-```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"manual-test","version":"0.0.0"}}}
-{"jsonrpc":"2.0","method":"notifications/initialized"}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_scene_info","arguments":{}}}
-```
-
-8. Para verificar un cambio real en la escena, usa después:
-
-```json
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_prop_blockout","arguments":{"prop_type":"table","collection_name":"MCP_Test_Props"}}}
+```text
+scene info
+info de escena
+create a chair
+crea una mesa
+create shop scene
+review character
+revisa el personaje
 ```
 
 Si todo está bien:
 
-- `get_scene_info` devolverá el resumen de la escena
-- `create_prop_blockout` devolverá `success: true`
-- en Blender aparecerá la colección y los objetos creados
+- la CLI devolverá el routing y el resultado en JSON
+- Blender mostrará los cambios creados
+- el token seguirá siendo obligatorio
 
-Para depuración, el bridge escribe logs en `stderr`. Puedes subir el detalle con:
+Para depuración, el cliente escribe logs en `stderr`. Puedes subir el detalle con:
 
 ```powershell
-$env:BLENDER_MCP_BRIDGE_LOG = "DEBUG"
+$env:BLENDER_MCP_ADAPTER_LOG = "DEBUG"
 ```
 
 ---
