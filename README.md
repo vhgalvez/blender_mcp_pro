@@ -18,11 +18,15 @@ El código es intencionadamente pequeño y enfocado en un transporte seguro, edi
     - [Modo LAN Whitelist (opcional)](#modo-lan-whitelist-opcional)
   - [Quick Start](#quick-start)
   - [Architecture](#architecture)
+  - [Image-Guided Character Workflow](#image-guided-character-workflow)
+  - [Multipurpose Scope](#multipurpose-scope)
+  - [Supported MCP Tools](#supported-mcp-tools)
   - [Instalación](#instalación)
   - [Uso Seguro](#uso-seguro)
     - [Mismo PC](#mismo-pc)
     - [LAN (opcional)](#lan-opcional)
   - [Puente MCP STDIO](#puente-mcp-stdio)
+  - [Smoke Test](#smoke-test)
   - [End-to-End Test](#end-to-end-test)
   - [Modelo de Comandos](#modelo-de-comandos)
   - [Workflows](#workflows)
@@ -46,7 +50,8 @@ blender-mcp-pro/
 ├── SECURITY.md
 ├── client/
 │   ├── blender_client.py
-│   └── mcp_adapter.py
+│   ├── mcp_adapter.py
+│   └── smoke_test.py
 └── blender_mcp_pro/
         ├── __init__.py
         ├── addon.py
@@ -70,6 +75,7 @@ blender-mcp-pro/
 - `character_tools.py`: Herramientas de personajes y materiales.
 - `client/blender_client.py`: Cliente TCP pequeño para autenticarse y enviar comandos al backend de Blender.
 - `client/mcp_adapter.py`: Puente MCP por STDIO para clientes compatibles como Copilot/Codex.
+- `client/smoke_test.py`: Smoke test local para validar auth y comandos básicos contra el backend TCP.
 
 ---
 
@@ -170,6 +176,112 @@ Responsabilidades:
 
 ---
 
+## Image-Guided Character Workflow
+
+El bridge MCP ahora expone una pipeline práctica para creación de personajes estilizados guiados por imágenes de referencia, siempre sobre el backend actual de Blender.
+
+Soportado ahora:
+
+- carga de referencias con `load_character_references`
+- blockout base con `create_character_blockout`
+- pelo estilizado con `build_character_hair`
+- rasgos faciales con `build_character_face`
+- materiales base con `apply_character_materials`
+- capturas de revisión con `capture_character_review`
+- comparación heurística con referencias con `compare_character_with_references`
+- ajustes proporcionales con `apply_character_proportion_fixes`
+- una secuencia compacta de orquestación con `create_character_from_references`
+
+Importante: esto permite una workflow guiada por referencia para un personaje estilizado, pero no hace reconstrucción automática completa desde imagen a malla final.
+
+No soportado aún:
+
+- reconstrucción automática completa image-to-3D
+- reconstrucción avanzada basada en ML/visión
+- retopología automática o generación final de producción desde fotos
+
+La herramienta `create_character_from_references` solo encadena pasos Blender ya implementados:
+
+1. cargar referencias
+2. crear blockout
+3. generar pelo
+4. generar cara
+5. aplicar materiales
+
+---
+
+## Multipurpose Scope
+
+El proyecto sigue siendo multipropósito. El bridge MCP está organizado por dominios:
+
+- `character`: referencias, blockout, pelo, cara, materiales y workflow compuesto
+- `props`: blockouts rápidos de props
+- `environment`: layouts rápidos de entorno
+- `review/refinement`: inspección de escena, capturas, comparación y correcciones proporcionales
+- `integrations`: estado y utilidades de Poly Haven / texturas ya soportadas por el backend
+
+Esto mantiene el add-on útil para personajes, props y entornos, en lugar de convertirlo en una herramienta de un solo caso de uso.
+
+---
+
+## Supported MCP Tools
+
+Actualmente el bridge MCP expone estas herramientas locales:
+
+### Character
+
+- `load_character_references`
+- `clear_character_references`
+- `create_character_blockout`
+- `apply_character_symmetry`
+- `build_character_hair`
+- `build_character_face`
+- `apply_character_materials`
+- `create_character_from_references`
+
+### Props
+
+- `create_prop_blockout`
+- `apply_prop_materials`
+
+### Environment
+
+- `create_environment_layout`
+- `apply_environment_materials`
+- `create_shop_scene`
+
+### Review / Refinement
+
+- `get_scene_info`
+- `get_object_info`
+- `capture_character_review`
+- `compare_character_with_references`
+- `apply_character_proportion_fixes`
+- `review_and_fix_character`
+
+### Integrations
+
+- `get_polyhaven_status`
+- `search_polyhaven_assets`
+- `download_polyhaven_asset`
+- `set_texture`
+
+Implementado hoy:
+
+- backend local en Blender
+- bridge MCP STDIO
+- workflows prácticos de personaje, props y entorno
+- revisión y refinamiento básicos
+- algunas integraciones existentes del backend, como Poly Haven
+
+No implementado hoy:
+
+- reconstrucción automática completa image-to-3D
+- visión avanzada tipo foundation model para inferir una malla final desde fotos
+- servicios cloud obligatorios o complejidad remota adicional
+
+---
+
 ## Instalación
 
 **Requisitos:**
@@ -242,11 +354,27 @@ Herramientas MCP expuestas inicialmente:
 
 - `get_scene_info`
 - `get_object_info`
+- `load_character_references`
+- `clear_character_references`
 - `create_character_blockout`
+- `apply_character_symmetry`
 - `build_character_hair`
+- `build_character_face`
 - `apply_character_materials`
+- `capture_character_review`
+- `compare_character_with_references`
+- `apply_character_proportion_fixes`
+- `create_character_from_references`
 - `create_prop_blockout`
+- `apply_prop_materials`
 - `create_environment_layout`
+- `apply_environment_materials`
+- `get_polyhaven_status`
+- `search_polyhaven_assets`
+- `download_polyhaven_asset`
+- `set_texture`
+- `review_and_fix_character`
+- `create_shop_scene`
 
 ### Uso
 
@@ -268,6 +396,40 @@ $env:BLENDER_TOKEN = "tu_token"
 ```
 
 El detalle exacto de configuración depende del cliente MCP, pero la idea es siempre la misma: Copilot/Codex debe arrancar este proceso STDIO, y este proceso reenviará cada tool call al servidor TCP autenticado del add-on.
+
+---
+
+## Smoke Test
+
+El repositorio incluye `client/smoke_test.py` para validar rápidamente el backend TCP local sin depender de un cliente MCP externo.
+
+Variables usadas:
+
+```powershell
+$env:BLENDER_HOST = "127.0.0.1"
+$env:BLENDER_PORT = "9876"
+$env:BLENDER_TOKEN = "tu_token"
+```
+
+Ejecutar smoke test básico:
+
+```powershell
+python client/smoke_test.py
+```
+
+Esto hace:
+
+- auth contra el backend TCP de Blender
+- `get_scene_info`
+- `create_prop_blockout`
+
+Para incluir también un test de personaje:
+
+```powershell
+python client/smoke_test.py --with-character
+```
+
+El script imprime `PASS` o `FAIL` por paso para que el primer diagnóstico local sea rápido.
 
 ---
 

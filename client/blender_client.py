@@ -31,12 +31,19 @@ class BlenderTcpClient:
     def from_env(cls) -> "BlenderTcpClient":
         host = os.environ.get("BLENDER_HOST", DEFAULT_HOST)
         raw_port = os.environ.get("BLENDER_PORT", str(DEFAULT_PORT))
+        raw_timeout = os.environ.get("BLENDER_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS))
         try:
             port = int(raw_port)
         except ValueError as exc:
             raise RuntimeError(f"BLENDER_PORT must be an integer, got: {raw_port!r}") from exc
+        try:
+            timeout_seconds = float(raw_timeout)
+        except ValueError as exc:
+            raise RuntimeError(f"BLENDER_TIMEOUT_SECONDS must be a number, got: {raw_timeout!r}") from exc
+        if timeout_seconds <= 0:
+            raise RuntimeError("BLENDER_TIMEOUT_SECONDS must be greater than zero")
         token = os.environ.get("BLENDER_TOKEN", "")
-        return cls(host=host, port=port, token=token)
+        return cls(host=host, port=port, token=token, timeout_seconds=timeout_seconds)
 
     def call(self, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.token:
@@ -44,8 +51,22 @@ class BlenderTcpClient:
         if params is None:
             params = {}
 
-        LOGGER.info("Connecting to Blender backend %s:%s for command=%s", self.host, self.port, command)
-        with socket.create_connection((self.host, self.port), timeout=self.timeout_seconds) as sock:
+        LOGGER.info(
+            "Connecting to Blender backend host=%s port=%s timeout=%ss command=%s",
+            self.host,
+            self.port,
+            self.timeout_seconds,
+            command,
+        )
+        try:
+            sock = socket.create_connection((self.host, self.port), timeout=self.timeout_seconds)
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not connect to Blender backend at {self.host}:{self.port}. "
+                "Start the Blender add-on server and confirm BLENDER_HOST/BLENDER_PORT."
+            ) from exc
+
+        with sock:
             sock.settimeout(self.timeout_seconds)
             self._send_message(
                 sock,
@@ -80,19 +101,24 @@ class BlenderTcpClient:
     def _read_message(self, sock: socket.socket) -> dict[str, Any]:
         buffer = b""
         while not buffer.endswith(b"\n"):
-            chunk = sock.recv(4096)
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout as exc:
+                raise RuntimeError(
+                    f"Timed out waiting for Blender backend response from {self.host}:{self.port}"
+                ) from exc
             if not chunk:
                 break
             buffer += chunk
         if not buffer:
-            raise RuntimeError("Blender server closed the connection without responding")
+            raise RuntimeError(f"Blender backend at {self.host}:{self.port} closed the connection without responding")
 
         try:
             message = json.loads(buffer.decode("utf-8").strip())
         except json.JSONDecodeError as exc:
-            raise RuntimeError("Blender server returned invalid JSON") from exc
+            raise RuntimeError(f"Blender backend at {self.host}:{self.port} returned invalid JSON") from exc
         if not isinstance(message, dict):
-            raise RuntimeError("Blender server returned a non-object JSON payload")
+            raise RuntimeError(f"Blender backend at {self.host}:{self.port} returned a non-object JSON payload")
         return message
 
     def _raise_if_not_ok(self, response: dict[str, Any], prefix: str) -> None:
