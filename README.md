@@ -1,203 +1,168 @@
+> ⚠️ **Nota:** El servidor no se iniciará hasta que se configure un **Auth Token** válido en las preferencias del complemento.
+
 # Blender MCP Pro
 
-Blender MCP Pro is a compact Blender add-on that exposes a secure local MCP-style command server for scene inspection, provider integrations, character blockouts, prop blockouts, and simple environment layouts.
+Blender MCP Pro es un complemento compacto para Blender que expone un servidor de comandos local seguro (estilo MCP) para inspección de escenas, integraciones con proveedores, bloqueos de personajes y props, y layouts de entornos simples.
 
-The current codebase is intentionally small. It focuses on a practical secure transport layer, editable Blender geometry, and a narrow set of debuggable workflows. It does not claim advanced AI vision, autonomous orchestration, or full production pipelines yet.
+El código es intencionadamente pequeño y enfocado en un transporte seguro, edición de geometría y flujos de trabajo depurables. No implementa aún visión avanzada, orquestación autónoma ni pipelines de producción completos.
 
-## Repository Layout
+---
 
-The repository keeps documentation and git metadata at the root, and the installable Blender add-on lives inside the `blender_mcp_pro/` package folder:
+## Tabla de Contenidos
 
-```text
+- [Blender MCP Pro](#blender-mcp-pro)
+  - [Tabla de Contenidos](#tabla-de-contenidos)
+  - [Estructura del Repositorio](#estructura-del-repositorio)
+  - [Modelo de Seguridad](#modelo-de-seguridad)
+    - [Modo Local](#modo-local)
+    - [Modo LAN Whitelist (opcional)](#modo-lan-whitelist-opcional)
+  - [Instalación](#instalación)
+  - [Uso Seguro](#uso-seguro)
+    - [Mismo PC](#mismo-pc)
+    - [LAN (opcional)](#lan-opcional)
+  - [Modelo de Comandos](#modelo-de-comandos)
+  - [Workflows](#workflows)
+    - [Personajes](#personajes)
+    - [Props](#props)
+    - [Entornos](#entornos)
+  - [Integraciones con Proveedores](#integraciones-con-proveedores)
+  - [Limitaciones Actuales](#limitaciones-actuales)
+  - [Estado Actual](#estado-actual)
+  - [Token de Autenticación](#token-de-autenticación)
+
+---
+
+## Estructura del Repositorio
+
+```
 blender-mcp-pro/
 ├── .gitignore
 ├── LICENSE
 ├── README.md
 ├── SECURITY.md
 └── blender_mcp_pro/
-    ├── __init__.py
-    ├── addon.py
-    ├── server.py
-    ├── protocol.py
-    ├── dispatcher.py
-    ├── integrations.py
-    ├── file_ops.py
-    └── character_tools.py
+        ├── __init__.py
+        ├── addon.py
+        ├── server.py
+        ├── protocol.py
+        ├── dispatcher.py
+        ├── integrations.py
+        ├── file_ops.py
+        └── character_tools.py
 ```
 
-What each file does:
+**Descripción de archivos principales:**
 
-- `__init__.py`: Blender package entrypoint that exposes `bl_info`, `register`, and `unregister`.
-- `addon.py`: Blender UI, add-on preferences, security/network preferences, operators, register/unregister.
-- `server.py`: socket lifecycle, local-only or LAN-whitelist binding, client admission checks, auth flow, audit logging, main-thread call bridge.
-- `protocol.py`: NDJSON framing, request validation, command schemas, message size limits, structured errors.
-- `dispatcher.py`: secure allowlist router plus compact props/environment builders.
-- `integrations.py`: outbound provider HTTP logic for Poly Haven, Sketchfab, Rodin, and Hunyuan.
-- `file_ops.py`: safe file roots, screenshot path restrictions, temp files, downloads, ZIP extraction, import helpers.
-- `character_tools.py`: character references, blockout, symmetry, hair, face, materials, review screenshots, comparison, and proportion fixes.
+- `__init__.py`: Entrada del paquete, expone `bl_info`, `register`, `unregister`.
+- `addon.py`: UI, preferencias, operadores, registro.
+- `server.py`: Ciclo de vida del socket, autenticación, logging.
+- `protocol.py`: Validación, framing NDJSON, límites de tamaño.
+- `dispatcher.py`: Router seguro, builders de props/entorno.
+- `integrations.py`: Lógica HTTP para proveedores externos.
+- `file_ops.py`: Seguridad de archivos, descargas, importación.
+- `character_tools.py`: Herramientas de personajes y materiales.
 
-## Security Model
+---
 
-The current implementation is built around a local-first security model:
+## Modelo de Seguridad
 
-- Local-only mode is the default and safest mode.
-- Optional LAN whitelist mode can be enabled manually.
-- Every client must authenticate with a shared token.
-- Incoming messages use structured NDJSON with validation and size limits.
-- Local file reads are restricted to configured safe roots.
-- Screenshots are restricted to `~/BlenderMCP/screenshots`.
-- Client admissions and rejections are audit-logged to `~/BlenderMCP/audit.log`.
+- **Modo local** (por defecto): solo acepta conexiones de `127.0.0.1`.
+- **Modo LAN whitelist** (opcional): requiere habilitación manual y lista de IPs/subredes permitidas.
+- **Token de autenticación** obligatorio para todos los clientes.
+- Validación estricta de mensajes y límites de tamaño.
+- Restricción de rutas de archivos y capturas.
+- Logging de admisiones y rechazos en `~/BlenderMCP/audit.log`.
 
-### Local-Only Mode
+### Modo Local
 
-- Server binds to `127.0.0.1`
-- Only loopback clients are accepted
-- Token auth is still required
+- El servidor escucha en `127.0.0.1`.
+- Solo acepta clientes locales.
+- El token sigue siendo obligatorio.
 
-### Optional LAN Whitelist Mode
+### Modo LAN Whitelist (opcional)
 
-- Disabled by default
-- Must be enabled manually in add-on preferences
-- Requires at least one allowed IP or CIDR subnet
-- Still requires token auth for every client
-- No public internet mode exists
+- Deshabilitado por defecto.
+- Debe habilitarse manualmente en las preferencias del complemento.
 
-Examples:
+- Requiere al menos una IP o subred CIDR permitida.
+- El token sigue siendo obligatorio para cada cliente.
+- No existe modo de acceso público a Internet.
 
-- Allowed IPs: `192.168.1.10,192.168.1.25`
-- Allowed subnets: `192.168.1.0/24,10.0.0.0/24`
+Ejemplos:
 
-For full security details, see [SECURITY.md](SECURITY.md).
+- IPs permitidas: `192.168.1.10,192.168.1.25`
+- Subredes permitidas: `192.168.1.0/24,10.0.0.0/24`
 
-## Installation
+Para detalles completos de seguridad, ver [SECURITY.md](SECURITY.md).
 
-Requirements:
 
-- Blender 3.x or newer
-- A ZIP that contains the add-on package folder
+---
 
-### Package Folder Layout
+## Instalación
 
-Blender installs modular add-ons as Python packages. The ZIP must contain a single top-level package folder with a valid Python module name.
+**Requisitos:**
+- Blender 3.x o superior
+- ZIP con la carpeta del paquete `blender_mcp_pro/`
 
-Recommended package folder name:
-
-```text
-blender_mcp_pro/
+**Estructura esperada del ZIP:**
 ```
-
-Expected ZIP contents:
-
-```text
 blender_mcp_pro.zip
 └── blender_mcp_pro/
     ├── __init__.py
     ├── addon.py
-    ├── server.py
-    ├── protocol.py
-    ├── dispatcher.py
-    ├── integrations.py
-    ├── file_ops.py
-    └── character_tools.py
+    └── ...
 ```
 
-Do not create a ZIP with loose `.py` files at the root. Do not create a ZIP where the add-on files are nested under an extra repository folder unless that inner folder is the actual package folder Blender should import.
+**Pasos:**
+1. Abre Blender.
+2. Ve a `Edit > Preferences > Add-ons`.
+3. Haz clic en `Install...` y selecciona el ZIP.
+4. Activa el complemento.
+5. Configura el **Auth Token** en las preferencias antes de iniciar el servidor.
 
-### Creating The ZIP
+**Solución de errores comunes:**
+- El ZIP debe contener la carpeta del paquete, no archivos sueltos.
+- La carpeta debe tener `__init__.py` y un nombre válido.
+- Elimina instalaciones previas rotas antes de reinstalar.
 
-From a working copy, ZIP the `blender_mcp_pro/` folder itself so that the folder is the top-level entry in the archive. Keep `README.md`, `SECURITY.md`, `LICENSE`, and git metadata at the repository root; they are not required inside the Blender install ZIP.
+---
 
-Correct:
 
-```text
-blender_mcp_pro.zip
-└── blender_mcp_pro/
-```
+## Uso Seguro
 
-Incorrect:
+### Mismo PC
+1. Mantén el modo local habilitado.
+2. Genera y configura un **Auth Token**.
+3. Inicia el servidor desde el panel de Blender.
+4. Conecta el cliente MCP local usando `127.0.0.1:<puerto>` y el token.
 
-```text
-blender_mcp_pro.zip
-├── addon.py
-├── server.py
-└── ...
-```
+### LAN (opcional)
+1. Genera/rota el **Auth Token**.
+2. Habilita el modo LAN whitelist.
+3. Añade IPs/subredes permitidas.
+4. Inicia/reinicia el servidor.
+5. Conecta desde otra máquina usando la IP LAN y el token.
+6. Deshabilita el modo LAN al terminar.
 
-Incorrect:
+> **Nunca expongas el servidor a Internet ni uses port forwarding.**
 
-```text
-blender_mcp_pro.zip
-└── blender-mcp-pro-main/
-    └── blender_mcp_pro/
-```
+---
 
-### Installing In Blender
 
-1. Open Blender.
-2. Go to `Edit > Preferences > Add-ons`.
-3. Click `Install...`.
-4. Select the ZIP file that contains the `blender_mcp_pro` package folder.
-5. Enable the add-on.
-6. Open the `BlenderMCP` tab in the 3D View sidebar.
-7. Open add-on preferences and set an `Auth Token` before starting the server.
-
-### Troubleshooting Import Errors
-
-If Blender reports errors such as `No module named 'server'` or similar:
-
-- Make sure the ZIP contains the package folder, not loose files.
-- Make sure the package folder contains `__init__.py`.
-- Make sure the package folder name is a valid Python package name such as `blender_mcp_pro`.
-- Remove any older broken install of the add-on from Blender before reinstalling.
-- Recreate the ZIP after any file moves so Blender is not reading a stale archive.
-
-If Blender reports `attempted relative import with no known parent package`:
-
-- Make sure Blender is installing the ZIP as a package folder, not a single loose Python file.
-- Make sure you selected the ZIP that contains `blender_mcp_pro/` at the top level.
-- Do not run the individual module files directly; Blender must load the package through `blender_mcp_pro/__init__.py`.
-
-The previous import failure happened because the add-on was being loaded as a package, but the code was importing sibling modules as top-level modules like `import server` and `from dispatcher import ...`. In a packaged Blender add-on, those imports must be package-relative, such as `from . import server` and `from .dispatcher import ...`.
-
-## Secure Usage
-
-### Same PC
-
-Recommended setup:
-
-1. Keep `Local-Only Mode` enabled.
-2. Generate an `Auth Token` in add-on preferences.
-3. Leave LAN whitelist mode disabled.
-4. Start the server from the Blender panel.
-5. Connect your local MCP client using `127.0.0.1:<port>` and the token.
-
-### Optional LAN Use For Another Laptop Or PC
-
-Only use this on a trusted local network.
-
-1. Generate or rotate the `Auth Token`.
-2. Enable `Enable LAN Whitelist Mode`.
-3. Add the exact remote machine IP to `Allowed IPs`, or a narrow trusted subnet to `Allowed Subnets`.
-4. Start or restart the server.
-5. Connect from the other machine using the Blender host LAN IP and the same token.
-6. Disable LAN whitelist mode again when the session is over.
-
-Do not expose the server through router port forwarding, reverse proxies, or public tunnels.
-
-## Current Command Model
-
-The command layer currently supports three practical modes:
+## Modelo de Comandos
 
 - `character`
 - `props`
 - `environment`
 
-Character commands are implemented in `character_tools.py`. Props and environment commands are implemented compactly in `dispatcher.py`.
+---
 
-## Character Workflow
 
-Current character workflow:
+## Workflows
 
+### Personajes
+
+Comandos:
 1. `load_character_references`
 2. `create_character_blockout`
 3. `apply_character_symmetry`
@@ -208,162 +173,91 @@ Current character workflow:
 8. `compare_character_with_references`
 9. `apply_character_proportion_fixes`
 
-What it supports today:
+Soporta referencias, bloqueos cartoon, simetría, materiales base, capturas y comparaciones heurísticas.
 
-- front / side / optional back reference images
-- stylized cartoon blockout
-- mirror workflow
-- simple punk/spiky hair
-- simple cartoon face parts
-- simple base materials
-- front/side review screenshots
-- heuristic silhouette comparison
-- non-destructive scale-based proportion fixes
+### Props
 
-Character generation is still heuristic and geometry-based. There is no advanced image understanding or ML-based character reconstruction yet.
-
-## Props Workflow
-
-Current props mode commands:
-
+Comandos:
 - `create_prop_blockout`
 - `apply_prop_symmetry`
 - `apply_prop_materials`
 
-Supported prop blockout types:
+Tipos soportados: `chair`, `table`, `crate`, `weapon`.
 
-- `chair`
-- `table`
-- `crate`
-- `weapon`
+### Entornos
 
-What props mode does today:
-
-- creates named editable prop geometry
-- groups prop objects cleanly
-- supports a mirror workflow
-- applies simple stylized base materials
-
-## Environment Workflow
-
-Current environment mode commands:
-
+Comandos:
 - `create_environment_layout`
 - `apply_environment_materials`
 
-Supported layout types:
+Tipos: `room`, `corridor`, `shop`, `kiosk`.
 
-- `room`
-- `corridor`
-- `shop`
-- `kiosk`
+---
 
-What environment mode does today:
 
-- creates editable layout geometry
-- groups environment objects cleanly
-- applies simple base materials for floors, walls, counters, and accents
-
-## Provider Integrations
-
-The current add-on includes practical provider integration support for:
+## Integraciones con Proveedores
 
 - Poly Haven
 - Sketchfab
 - Hyper3D / Rodin
 - Hunyuan
 
-These integrations are still guarded by the same secure transport and preference model, and they are intentionally separate from the geometry-first character/props/environment workflows.
-
-## What Is Not Implemented Yet
-
-The README now intentionally avoids claiming the following as finished:
-
-- advanced image understanding
-- ML or external vision models for character analysis
-- autonomous feedback loops
-- advanced procedural generation
-- advanced asset orchestration
-- full scene pipeline automation
-- public internet access mode
-- open access / unauthenticated mode
-- per-command authorization tiers
-- rate limiting
-- protocol version negotiation
-- advanced character features beyond the current stylized editable foundation
-
-## Current Status
-
-The project currently provides:
-
-- a real 7-file compact architecture
-- a secure local-first command server
-- optional LAN whitelist access
-- character workflow phase 1 to 3
-- multipurpose phase 1 for props and environment
-
-It does not yet provide a full autonomous 3D generation platform.
+---
 
 
-🔐 Authentication Token (Required)
+## Limitaciones Actuales
 
-The MCP server requires a shared authentication token before it can accept and execute any client commands.
+No implementa aún:
+- Visión avanzada o ML
+- Orquestación autónoma
+- Generación procedural avanzada
+- Acceso público o sin autenticación
+- Rate limiting, negociación de versión, etc.
 
-This token is not generated externally and does not come from any provider.
-It is a manually defined shared secret between Blender and your MCP client.
-
-How To Create A Token
-
-You can use any string, but it is recommended to use a unique and non-trivial value.
-
-Option 1 — Simple (for testing)
-123456
-Option 2 — Custom secure string (recommended)
-mcp_secure_token_2026_victor
-Option 3 — Random token (recommended for real use)
-
-Generate a UUID in PowerShell:
-
-[guid]::NewGuid()
-
-Example output:
+---
 
 b7f3c2a1-9c4d-4f2e-a8e1-6d9c2b7a1234
-Where To Set The Token
-Open Blender
-Go to the MCP panel in the 3D View sidebar (N key → Blender MCP tab)
-Click:
-Open Add-on Preferences
-Find the field:
-Auth Token
-Paste your token there
-Why The Token Is Required
-
-The MCP server uses the token to authenticate every client connection.
-
-Without a valid token:
-
 the server will reject the connection
-no commands will be executed
 the client will be logged as rejected in the audit log
-Example Client Authentication
 
-A client must authenticate before sending any command:
+## Estado Actual
 
+- Arquitectura compacta y segura
+- Servidor local y whitelist LAN
+- Workflows básicos de personajes, props y entornos
+
+No es aún una plataforma autónoma de generación 3D.
+
+---
+
+## Token de Autenticación
+
+El servidor requiere un **Auth Token** compartido para aceptar comandos.
+
+**Cómo crear un token:**
+- Simple: `123456` (solo pruebas)
+- Personalizado: `mcp_secure_token_2026_victor`
+- Aleatorio (recomendado):  
+    En PowerShell:  
+    ```
+    [guid]::NewGuid()
+    ```
+
+**Dónde configurarlo:**  
+En Blender, ve al panel MCP → Preferencias del complemento → campo `Auth Token`.
+
+**Ejemplo de autenticación cliente:**
+```json
 {
-  "type": "auth",
-  "token": "mcp_secure_token_2026_victor"
+    "type": "auth",
+    "token": "mcp_secure_token_2026_victor"
 }
+```
 
-The token must match exactly the one configured in Blender.
+> **Notas de seguridad:**  
+> - Nunca publiques tu token.
+> - Rótalo si habilitas modo LAN.
+> - Usa tokens fuertes para múltiples máquinas.
+> - El token es obligatorio incluso en modo local.
 
-Security Notes
-Never expose your token in public repositories
-Rotate the token if you enable LAN whitelist mode
-Use a strong random token when connecting multiple machines
-The token is required even in local-only mode
-💡 EXTRA (recomendación PRO)
-
-También puedes añadir esta línea en tu README arriba:
-
-> ⚠️ The server will not start until a valid Auth Token is set in the add-on preferences.
+---
