@@ -296,9 +296,9 @@ class McpBridgeServer:
 
         spec = TOOLS[name]
         command_params = spec["build_params"](arguments)
-        client = self.get_client()
-        LOGGER.info("Calling MCP tool=%s backend_command=%s params=%s", name, spec["command"], command_params)
         try:
+            client = self.get_client()
+            LOGGER.info("Calling MCP tool=%s backend_command=%s params=%s", name, spec["command"], command_params)
             result = client.call(spec["command"], command_params)
         except BlenderClientError as exc:
             LOGGER.warning("Backend tool failure tool=%s code=%s message=%s", name, exc.code, exc)

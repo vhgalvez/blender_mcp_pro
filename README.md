@@ -21,6 +21,7 @@ El código es intencionadamente pequeño y enfocado en un transporte seguro, edi
     - [Mismo PC](#mismo-pc)
     - [LAN (opcional)](#lan-opcional)
   - [Puente MCP STDIO](#puente-mcp-stdio)
+  - [End-to-End Test](#end-to-end-test)
   - [Modelo de Comandos](#modelo-de-comandos)
   - [Workflows](#workflows)
     - [Personajes](#personajes)
@@ -200,6 +201,58 @@ $env:BLENDER_TOKEN = "tu_token"
 ```
 
 El detalle exacto de configuración depende del cliente MCP, pero la idea es siempre la misma: Copilot/Codex debe arrancar este proceso STDIO, y este proceso reenviará cada tool call al servidor TCP autenticado del add-on.
+
+---
+
+## End-to-End Test
+
+Pasos exactos para validar el flujo completo `cliente MCP -> bridge STDIO -> backend TCP de Blender -> cambio en escena`:
+
+1. Inicia Blender.
+2. Activa el complemento `Blender MCP`.
+3. Abre el panel del complemento y pulsa `Start Server`.
+4. En una terminal PowerShell, sitúate en este repositorio.
+5. Define las variables de entorno que usa el bridge:
+
+```powershell
+$env:BLENDER_HOST = "127.0.0.1"
+$env:BLENDER_PORT = "9876"
+$env:BLENDER_TOKEN = "tu_token"
+```
+
+6. Lanza el adaptador MCP por STDIO:
+
+```powershell
+python client/mcp_adapter.py
+```
+
+7. Desde tu cliente MCP, envía primero `initialize`, luego `notifications/initialized`, y después un primer smoke test con `tools/call` sobre `get_scene_info`.
+
+Ejemplo mínimo por STDIO:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"manual-test","version":"0.0.0"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_scene_info","arguments":{}}}
+```
+
+8. Para verificar un cambio real en la escena, usa después:
+
+```json
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_prop_blockout","arguments":{"prop_type":"table","collection_name":"MCP_Test_Props"}}}
+```
+
+Si todo está bien:
+
+- `get_scene_info` devolverá el resumen de la escena
+- `create_prop_blockout` devolverá `success: true`
+- en Blender aparecerá la colección y los objetos creados
+
+Para depuración, el bridge escribe logs en `stderr`. Puedes subir el detalle con:
+
+```powershell
+$env:BLENDER_MCP_BRIDGE_LOG = "DEBUG"
+```
 
 ---
 
