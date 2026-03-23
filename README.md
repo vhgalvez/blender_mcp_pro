@@ -257,3 +257,6 @@ Implemented:
 - curated MCP stdio bridge for Copilot
 - primitive scene/prop/environment/character tools
 - small generative planning layer on top of real primitives
+
+SCREENSHOT:
+![Blender](MCP_ia_blender.png)
