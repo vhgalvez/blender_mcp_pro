@@ -465,6 +465,23 @@ Importante:
 - deja `client/` fuera de Blender
 - `client/` no va dentro del ZIP del add-on
 
+### Uso Con Copilot Agent Mode
+
+1. Inicia Blender y arranca el servidor del add-on.
+2. Abre este repositorio en VS Code.
+3. Verifica `.vscode/mcp.json`.
+4. Asegurate de que `BLENDER_HOST`, `BLENDER_PORT` y `BLENDER_TOKEN` coinciden con Blender.
+5. En VS Code, inicia o reinicia el servidor MCP desde el editor de `mcp.json` o con `MCP: List Servers`.
+6. Abre Copilot Chat en modo Agent.
+7. Comprueba que el servidor `blender-mcp-pro` aparece y tiene tools cargadas.
+
+Si Copilot Agent mode no descubre tools:
+
+- revisa la confianza del servidor MCP en VS Code
+- abre la salida del servidor con `MCP: List Servers` -> `Show Output`
+- valida primero `python client/mcp_stdio_server.py`
+- valida despues `python client/smoke_test.py`
+
 ---
 
 ## Smoke Test
@@ -599,6 +616,8 @@ $env:BLENDER_MCP_ADAPTER_LOG = "DEBUG"
 - confirma que `.vscode/mcp.json` apunta a `client/mcp_stdio_server.py`
 - confirma que `BLENDER_HOST`, `BLENDER_PORT` y `BLENDER_TOKEN` en `.vscode/mcp.json` coinciden con Blender
 - ejecuta `python client/mcp_stdio_server.py` manualmente para verificar que el proceso arranca sin errores de entorno
+- confirma que el servidor MCP fue marcado como confiable por VS Code
+- usa `MCP: List Servers` para verificar que `blender-mcp-pro` este iniciado
 - si el bridge arranca pero `tools/call` falla, el problema suele estar en el backend TCP o en las variables de entorno
 
 ### Un tool está declarado en `client/` pero no existe en `dispatcher.py`
@@ -608,6 +627,20 @@ $env:BLENDER_MCP_ADAPTER_LOG = "DEBUG"
   - `unavailable`
 - el servidor MCP stdio solo expone tools `server`
 - si un tool no existe realmente en el servidor, la CLI o el bridge devuelven `tool_not_implemented`
+
+### Copilot ve el servidor pero no puede ejecutar tools
+
+- revisa el Output del servidor MCP en VS Code
+- confirma que el token en `.vscode/mcp.json` coincide exactamente con el configurado en Blender
+- confirma que el servidor TCP de Blender sigue iniciado en `127.0.0.1:<puerto>`
+- valida con `raw get_scene_info {}` en `python client/agent_cli.py`
+
+### La carpeta `client/` no aparece en GitHub pero existe localmente
+
+- `client/` sigue siendo parte del workspace local y del flujo MCP
+- no debe moverse dentro de `blender_mcp_pro/`
+- no debe instalarse en Blender
+- si no esta en el remoto, puedes seguir validando localmente con `python client/smoke_test.py` y `python client/mcp_stdio_server.py`
 
 ### La carpeta `client/` no forma parte de la instalación de Blender
 
