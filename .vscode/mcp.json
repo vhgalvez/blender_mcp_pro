@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "blender": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["client/mcp_stdio_server.py"],
+      "env": {
+        "BLENDER_HOST": "127.0.0.1",
+        "BLENDER_PORT": "9876",
+        "BLENDER_TOKEN": "${input:blenderToken}"
+      }
+    }
+  }
+}

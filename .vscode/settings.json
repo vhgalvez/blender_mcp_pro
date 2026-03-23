@@ -1,0 +1,10 @@
+{
+    "chat.mcp.serverSampling": {
+        "game/.vscode/mcp.json: blender": {
+            "allowedModels": [
+                "copilot/auto",
+                "copilotcli/claude-sonnet-4.6"
+            ]
+        }
+    }
+}
