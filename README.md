@@ -16,6 +16,8 @@ El código es intencionadamente pequeño y enfocado en un transporte seguro, edi
   - [Modelo de Seguridad](#modelo-de-seguridad)
     - [Modo Local](#modo-local)
     - [Modo LAN Whitelist (opcional)](#modo-lan-whitelist-opcional)
+  - [Quick Start](#quick-start)
+  - [Architecture](#architecture)
   - [Instalación](#instalación)
   - [Uso Seguro](#uso-seguro)
     - [Mismo PC](#mismo-pc)
@@ -105,6 +107,69 @@ Para detalles completos de seguridad, ver [SECURITY.md](SECURITY.md).
 
 ---
 
+## Quick Start
+
+1. Instala el ZIP del complemento `blender_mcp_pro` en Blender.
+2. Activa el add-on `Blender MCP`.
+3. Configura un `Auth Token` en las preferencias del complemento.
+4. Inicia el servidor desde el panel del add-on en Blender.
+5. En una terminal PowerShell dentro de este repositorio, define:
+
+```powershell
+$env:BLENDER_HOST = "127.0.0.1"
+$env:BLENDER_PORT = "9876"
+$env:BLENDER_TOKEN = "tu_token"
+```
+
+6. Ejecuta el bridge MCP:
+
+```powershell
+python client/mcp_adapter.py
+```
+
+7. Haz el primer smoke test con `get_scene_info`.
+8. Haz el primer test con cambio real de escena con `create_prop_blockout`.
+
+Smoke test mínimo:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"quick-start","version":"0.0.0"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_scene_info","arguments":{}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_prop_blockout","arguments":{"prop_type":"table","collection_name":"MCP_QuickStart_Props"}}}
+```
+
+---
+
+## Architecture
+
+El flujo actual queda así:
+
+```text
+Copilot / Codex MCP Client
+            |
+            v
+client/mcp_adapter.py
+(MCP STDIO bridge)
+            |
+            v
+client/blender_client.py
+(TCP auth client)
+            |
+            v
+blender_mcp_pro add-on
+(Blender backend + TCP server + command execution)
+```
+
+Responsabilidades:
+
+- `blender_mcp_pro` dentro de Blender: UI, preferencias, token, validación de red y ejecución real de comandos.
+- `client/blender_client.py`: autenticación y llamadas al backend TCP existente.
+- `client/mcp_adapter.py`: servidor MCP STDIO compatible con clientes como Copilot/Codex.
+- cliente MCP externo: inicia el bridge y consume tools MCP estándar.
+
+---
+
 ## Instalación
 
 **Requisitos:**
@@ -178,6 +243,8 @@ Herramientas MCP expuestas inicialmente:
 - `get_scene_info`
 - `get_object_info`
 - `create_character_blockout`
+- `build_character_hair`
+- `apply_character_materials`
 - `create_prop_blockout`
 - `create_environment_layout`
 

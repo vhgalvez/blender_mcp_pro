@@ -71,6 +71,38 @@ TOOLS = {
         "command": "create_character_blockout",
         "build_params": lambda arguments: build_character_params(arguments),
     },
+    "build_character_hair": {
+        "description": "Build a simple stylized hair blockout for the active character setup.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "spike_count": {
+                    "type": "integer",
+                    "description": "Number of stylized hair spikes. Defaults to 9.",
+                },
+                "collection_name": {
+                    "type": "string",
+                    "description": "Optional destination collection name.",
+                },
+            },
+        },
+        "command": "build_character_hair",
+        "build_params": lambda arguments: build_character_hair_params(arguments),
+    },
+    "apply_character_materials": {
+        "description": "Apply basic character materials to the current character blockout.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "include_metal": {
+                    "type": "boolean",
+                    "description": "Whether to include metallic accents.",
+                }
+            },
+        },
+        "command": "apply_character_materials",
+        "build_params": lambda arguments: build_apply_character_materials_params(arguments),
+    },
     "create_prop_blockout": {
         "description": "Create a prop blockout for a supported prop type.",
         "inputSchema": {
@@ -151,6 +183,29 @@ def build_prop_params(arguments: dict[str, Any]) -> dict[str, Any]:
     collection_name = optional_string(arguments, "collection_name")
     if collection_name is not None:
         params["collection_name"] = collection_name
+    return params
+
+
+def build_character_hair_params(arguments: dict[str, Any]) -> dict[str, Any]:
+    params: dict[str, Any] = {"mode": "character"}
+    spike_count = arguments.get("spike_count")
+    if spike_count is not None:
+        if not isinstance(spike_count, int):
+            raise ValueError("'spike_count' must be an integer")
+        params["spike_count"] = spike_count
+    collection_name = optional_string(arguments, "collection_name")
+    if collection_name is not None:
+        params["collection_name"] = collection_name
+    return params
+
+
+def build_apply_character_materials_params(arguments: dict[str, Any]) -> dict[str, Any]:
+    params: dict[str, Any] = {"mode": "character"}
+    include_metal = arguments.get("include_metal")
+    if include_metal is not None:
+        if not isinstance(include_metal, bool):
+            raise ValueError("'include_metal' must be a boolean")
+        params["include_metal"] = include_metal
     return params
 
 
