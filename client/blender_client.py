@@ -79,12 +79,16 @@ class BlenderTcpClient:
         if params is None:
             params = {}
 
+        auth_request_id = f"auth-{uuid.uuid4().hex}"
+        command_request_id = f"cmd-{uuid.uuid4().hex}"
+
         LOGGER.info(
-            "Connecting to Blender backend host=%s port=%s timeout=%ss command=%s",
+            "Connecting to Blender backend host=%s port=%s timeout=%ss command=%s request_id=%s",
             self.host,
             self.port,
             self.timeout_seconds,
             command,
+            command_request_id,
         )
 
         try:
@@ -93,6 +97,14 @@ class BlenderTcpClient:
                 timeout=self.timeout_seconds,
             )
         except OSError as exc:
+            LOGGER.error(
+                "Backend connection failed host=%s port=%s command=%s request_id=%s error=%s",
+                self.host,
+                self.port,
+                command,
+                command_request_id,
+                exc,
+            )
             raise RuntimeError(
                 f"Could not connect to Blender backend at {self.host}:{self.port}. "
                 "Start the Blender add-on server and confirm BLENDER_HOST/BLENDER_PORT."
@@ -104,18 +116,24 @@ class BlenderTcpClient:
             self._send_message(
                 sock,
                 {
-                    "id": f"auth-{uuid.uuid4().hex}",
+                    "id": auth_request_id,
                     "type": "auth",
                     "token": self.token,
                 },
             )
             auth_response = self._read_message(sock)
             self._raise_if_not_ok(auth_response, "Authentication with Blender failed")
+            LOGGER.info(
+                "Backend authentication succeeded host=%s port=%s request_id=%s",
+                self.host,
+                self.port,
+                auth_request_id,
+            )
 
             self._send_message(
                 sock,
                 {
-                    "id": f"cmd-{uuid.uuid4().hex}",
+                    "id": command_request_id,
                     "type": "command",
                     "command": command,
                     "params": params,
@@ -125,11 +143,20 @@ class BlenderTcpClient:
             self._raise_if_not_ok(response, f"Blender command failed: {command}")
 
             if "result" not in response:
+                LOGGER.error(
+                    "Backend command returned ok without result command=%s request_id=%s",
+                    command,
+                    command_request_id,
+                )
                 raise RuntimeError(
                     f"Blender backend returned ok=true without result for command: {command}"
                 )
 
-            LOGGER.info("Blender backend command succeeded command=%s", command)
+            LOGGER.info(
+                "Blender backend command succeeded command=%s request_id=%s",
+                command,
+                command_request_id,
+            )
             return response["result"]
 
     def _send_message(self, sock: socket.socket, payload: dict[str, Any]) -> None:
@@ -180,7 +207,12 @@ class BlenderTcpClient:
         message = error.get("message", prefix)
         details = error.get("details")
 
-        LOGGER.warning("Blender backend error code=%s message=%s", code, message)
+        LOGGER.warning(
+            "Blender backend error code=%s message=%s response_id=%s",
+            code,
+            message,
+            response.get("id"),
+        )
         raise BlenderClientError(
             code=code,
             message=f"{prefix}: {message}",

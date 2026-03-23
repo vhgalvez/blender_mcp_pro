@@ -4,6 +4,10 @@ import sys
 from blender_client import BlenderTcpClient
 
 
+CHECK_OBJECT_INFO_FLAG = "--check-object-info"
+WITH_CHARACTER_FLAG = "--with-character"
+
+
 def run_step(name, func):
     print(f"[RUN ] {name}")
     try:
@@ -18,6 +22,8 @@ def run_step(name, func):
 
 def main() -> int:
     client = BlenderTcpClient.from_env()
+    check_object_info = CHECK_OBJECT_INFO_FLAG in sys.argv
+    with_character = WITH_CHARACTER_FLAG in sys.argv
     print(
         "Smoke test target:",
         json.dumps(
@@ -43,8 +49,18 @@ def main() -> int:
                 },
             ),
         )
+        if check_object_info:
+            run_step(
+                "get_object_info",
+                lambda: client.call(
+                    "get_object_info",
+                    {
+                        "name": "PROP_Table_Top",
+                    },
+                ),
+            )
 
-        if "--with-character" in sys.argv:
+        if with_character:
             run_step(
                 "create_character_blockout",
                 lambda: client.call(
@@ -59,7 +75,12 @@ def main() -> int:
     except Exception:
         return 1
 
+    enabled_flags = {
+        "check_object_info": check_object_info,
+        "with_character": with_character,
+    }
     print("[DONE] Smoke test passed")
+    print(json.dumps({"options": enabled_flags}, ensure_ascii=False))
     return 0
 
 
