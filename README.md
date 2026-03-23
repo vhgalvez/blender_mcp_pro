@@ -49,9 +49,11 @@ blender-mcp-pro/
 ├── README.md
 ├── SECURITY.md
 ├── client/
+│   ├── agent_cli.py
 │   ├── blender_client.py
 │   ├── mcp_adapter.py
-│   └── smoke_test.py
+│   ├── smoke_test.py
+│   └── tools_registry.py
 └── blender_mcp_pro/
         ├── __init__.py
         ├── addon.py
@@ -73,9 +75,11 @@ blender-mcp-pro/
 - `integrations.py`: Lógica HTTP para proveedores externos.
 - `file_ops.py`: Seguridad de archivos, descargas, importación.
 - `character_tools.py`: Herramientas de personajes y materiales.
+- `client/agent_cli.py`: CLI interactiva para prompts libres, comandos raw y exploración local del toolkit.
 - `client/blender_client.py`: Cliente TCP pequeño para autenticarse y enviar comandos al backend de Blender.
-- `client/mcp_adapter.py`: Puente MCP por STDIO para clientes compatibles como Copilot/Codex.
+- `client/mcp_adapter.py`: Adaptador local para routing de prompts, workflows y despacho de herramientas al backend TCP.
 - `client/smoke_test.py`: Smoke test local para validar auth y comandos básicos contra el backend TCP.
+- `client/tools_registry.py`: Registro de herramientas MCP locales con descripciones y esquemas JSON.
 
 ---
 
@@ -176,109 +180,137 @@ Responsabilidades:
 
 ---
 
-## Image-Guided Character Workflow
-
-El bridge MCP ahora expone una pipeline práctica para creación de personajes estilizados guiados por imágenes de referencia, siempre sobre el backend actual de Blender.
-
-Soportado ahora:
-
-- carga de referencias con `load_character_references`
-- blockout base con `create_character_blockout`
-- pelo estilizado con `build_character_hair`
-- rasgos faciales con `build_character_face`
-- materiales base con `apply_character_materials`
-- capturas de revisión con `capture_character_review`
-- comparación heurística con referencias con `compare_character_with_references`
-- ajustes proporcionales con `apply_character_proportion_fixes`
-- una secuencia compacta de orquestación con `create_character_from_references`
-
-Importante: esto permite una workflow guiada por referencia para un personaje estilizado, pero no hace reconstrucción automática completa desde imagen a malla final.
-
-No soportado aún:
-
-- reconstrucción automática completa image-to-3D
-- reconstrucción avanzada basada en ML/visión
-- retopología automática o generación final de producción desde fotos
-
-La herramienta `create_character_from_references` solo encadena pasos Blender ya implementados:
-
-1. cargar referencias
-2. crear blockout
-3. generar pelo
-4. generar cara
-5. aplicar materiales
-
----
-
-## Multipurpose Scope
-
-El proyecto sigue siendo multipropósito. El bridge MCP está organizado por dominios:
-
-- `character`: referencias, blockout, pelo, cara, materiales y workflow compuesto
-- `props`: blockouts rápidos de props
-- `environment`: layouts rápidos de entorno
-- `review/refinement`: inspección de escena, capturas, comparación y correcciones proporcionales
-- `integrations`: estado y utilidades de Poly Haven / texturas ya soportadas por el backend
-
-Esto mantiene el add-on útil para personajes, props y entornos, en lugar de convertirlo en una herramienta de un solo caso de uso.
-
----
-
 ## Supported MCP Tools
 
-Actualmente el bridge MCP expone estas herramientas locales:
+El toolkit local expone herramientas multipropósito agrupadas por dominio.
+
+### Scene / Info
+
+- `get_scene_info`
+- `get_object_info`
+- `list_collections`:
+  placeholder preparado para futuro. El backend actual todavía no expone colecciones.
 
 ### Character
 
-- `load_character_references`
-- `clear_character_references`
-- `create_character_blockout`
-- `apply_character_symmetry`
-- `build_character_hair`
-- `build_character_face`
-- `apply_character_materials`
 - `create_character_from_references`
+- `create_character_blockout`
+- `capture_character_review`
+- `compare_character_with_references`
+- `apply_character_proportion_fixes`
+- `review_and_fix_character`
 
 ### Props
 
 - `create_prop_blockout`
 - `apply_prop_materials`
 
-### Environment
+### Environment / Layout
 
 - `create_environment_layout`
 - `apply_environment_materials`
 - `create_shop_scene`
+- `create_room_blockout`
+- `create_street_blockout`
 
-### Review / Refinement
+### Assets / Integrations
 
-- `get_scene_info`
-- `get_object_info`
-- `capture_character_review`
-- `compare_character_with_references`
-- `apply_character_proportion_fixes`
-- `review_and_fix_character`
-
-### Integrations
-
-- `get_polyhaven_status`
 - `search_polyhaven_assets`
 - `download_polyhaven_asset`
 - `set_texture`
 
 Implementado hoy:
 
-- backend local en Blender
-- bridge MCP STDIO
-- workflows prácticos de personaje, props y entorno
-- revisión y refinamiento básicos
-- algunas integraciones existentes del backend, como Poly Haven
+- backend local dentro de Blender con token auth
+- cliente TCP local reutilizable
+- adaptador local para routing de prompts y workflows
+- creación de personajes estilizados guiada por referencias
+- blockouts de props e interiores
+- revisión y ciclos iterativos de ajuste
 
 No implementado hoy:
 
 - reconstrucción automática completa image-to-3D
-- visión avanzada tipo foundation model para inferir una malla final desde fotos
-- servicios cloud obligatorios o complejidad remota adicional
+- visión avanzada o ML de reconstrucción
+- dependencias cloud obligatorias para el flujo local
+
+---
+
+## Character Workflow
+
+El flujo práctico para personaje estilizado guiado por referencias es:
+
+1. `create_character_from_references`
+2. `capture_character_review`
+3. `compare_character_with_references`
+4. `apply_character_proportion_fixes`
+
+También puedes ejecutar pasos individuales como:
+
+- `create_character_blockout`
+- `capture_character_review`
+- `review_and_fix_character`
+
+Soporta:
+
+- referencias front / side / back o profile
+- blockout cartoon / stylized
+- pelo y cara estilizados
+- materiales base
+- revisión por screenshots
+- ajustes iterativos de proporciones
+
+No afirma reconstrucción automática de imagen a malla final.
+
+---
+
+## Environment Workflow
+
+El flujo práctico para layout y entorno es:
+
+1. `create_environment_layout`
+2. `apply_environment_materials`
+
+Atajos incluidos:
+
+- `create_shop_scene`
+- `create_room_blockout`
+- `create_street_blockout`
+
+Esto cubre casos útiles como:
+
+- room / bedroom blockouts
+- shop / interior layouts
+- street-like layouts usando el backend actual de corridor como aproximación local
+
+---
+
+## Multipurpose Usage
+
+El proyecto sigue siendo multipropósito y no está limitado solo a personajes:
+
+- `character`: personajes cartoon / stylized desde reference sheets
+- `props`: props básicos para blockout rápido
+- `environment`: room / shop / interior / street-like layouts
+- `review`: captura, comparación y correcciones
+- `assets`: búsqueda y descarga de algunos assets ya soportados por el backend
+
+Esto mantiene útil el toolkit para prototipado de escenas completas en Blender, no solo para un único caso de uso.
+
+---
+
+## Client Directory Layout
+
+El directorio `client/` forma parte de este repositorio `blender_mcp_pro` y debe vivir aquí, no dentro de `.vscode` ni en carpetas sueltas de proyectos no relacionados.
+
+```text
+client/
+├── agent_cli.py
+├── blender_client.py
+├── mcp_adapter.py
+├── smoke_test.py
+└── tools_registry.py
+```
 
 ---
 
@@ -430,6 +462,31 @@ python client/smoke_test.py --with-character
 ```
 
 El script imprime `PASS` o `FAIL` por paso para que el primer diagnóstico local sea rápido.
+
+---
+
+## How To Run From The Repository Root
+
+Sitúate en la raíz del repositorio `blender_mcp_pro` y ejecuta los clientes desde ahí.
+
+Ejemplos:
+
+```powershell
+python client/smoke_test.py
+python client/smoke_test.py --with-character
+python client/agent_cli.py
+```
+
+CLI interactiva:
+
+- `help`
+- `tools`
+- `quit`
+- `raw get_scene_info {}`
+- `create punk character from references`
+- `create shop scene`
+- `create bedroom blockout`
+- `review the character`
 
 ---
 
