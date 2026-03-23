@@ -10,7 +10,9 @@
       "envFile": "${workspaceFolder}/client/.env",
       "env": {
         "BLENDER_HOST": "127.0.0.1",
-        "BLENDER_PORT": "9876"
+        "BLENDER_PORT": "9876",
+        "BLENDER_TIMEOUT_SECONDS": "10.0",
+        "PYTHONUNBUFFERED": "1"
       }
     }
   }

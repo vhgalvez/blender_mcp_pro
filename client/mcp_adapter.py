@@ -81,7 +81,11 @@ class BlenderMCPAdapter:
             return {"tool": "viewport_screenshot", "params": {}}
 
         if "reference" in text or "referencia" in text:
-            return {"tool": "create_character_from_references", "params": {}}
+            return self._limitation(
+                "missing_reference_inputs",
+                "Reference-guided character building requires explicit front/side image paths or a reference_dir.",
+                suggestions=["create_character_from_references", "build_character_from_description"],
+            )
 
         if ("review" in text or "revisa" in text or "corrige" in text) and any(keyword in text for keyword in CHARACTER_KEYWORDS):
             return {"tool": "review_and_fix_character", "params": {"strength": 0.35}}

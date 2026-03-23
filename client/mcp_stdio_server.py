@@ -114,6 +114,9 @@ class MCPStdioServer:
             if method == "tools/call":
                 tool_name = params.get("name")
                 arguments = params.get("arguments", {}) or {}
+                if not isinstance(arguments, dict):
+                    self._write_result(request_id, self._tool_error("invalid_arguments", "Tool arguments must be an object."))
+                    return
                 self._write_result(request_id, self._call_tool(tool_name, arguments))
                 return
 
