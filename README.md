@@ -182,7 +182,7 @@ Responsabilidades:
 
 ## Supported MCP Tools
 
-El toolkit local expone herramientas multipropósito agrupadas por dominio.
+El bridge MCP stdio expone solo herramientas reales del servidor de Blender. No anuncia placeholders ni workflows locales como si fueran tools MCP.
 
 ### Scene / Info
 
@@ -190,14 +190,11 @@ El toolkit local expone herramientas multipropósito agrupadas por dominio.
 - `get_object_info`
 - `get_viewport_screenshot`
 - `get_telemetry_consent`
-- `list_collections`:
-  placeholder preparado para futuro. El backend actual todavía no expone colecciones.
 
 ### Character
 
 - `load_character_references`
 - `clear_character_references`
-- `create_character_from_references`
 - `create_character_blockout`
 - `apply_character_symmetry`
 - `build_character_hair`
@@ -206,7 +203,6 @@ El toolkit local expone herramientas multipropósito agrupadas por dominio.
 - `capture_character_review`
 - `compare_character_with_references`
 - `apply_character_proportion_fixes`
-- `review_and_fix_character`
 
 ### Props
 
@@ -218,9 +214,6 @@ El toolkit local expone herramientas multipropósito agrupadas por dominio.
 
 - `create_environment_layout`
 - `apply_environment_materials`
-- `create_shop_scene`
-- `create_room_blockout`
-- `create_street_blockout`
 
 ### Assets / Integrations
 
@@ -242,11 +235,22 @@ El toolkit local expone herramientas multipropósito agrupadas por dominio.
 - `poll_hunyuan_job_status`
 - `import_generated_asset_hunyuan`
 
-Implementado hoy:
+Helpers locales de la CLI y del adaptador, útiles pero no expuestos como MCP tools:
+
+- `create_character_from_references`
+- `review_and_fix_character`
+- `create_shop_scene`
+
+Placeholders no implementados y no expuestos por MCP:
+
+- `list_collections`
+- `create_street_blockout`
+
+Implementado hoy y disponible para Copilot a traves del bridge MCP:
 
 - backend local dentro de Blender con token auth
 - cliente TCP local reutilizable
-- adaptador local para routing de prompts y workflows
+- bridge MCP stdio real para VS Code
 - creación de personajes estilizados guiada por referencias
 - blockouts de props e interiores
 - revisión y ciclos iterativos de ajuste
@@ -448,10 +452,10 @@ Crea o revisa `.vscode/mcp.json` en la raiz del repositorio:
       "command": "python",
       "args": ["client/mcp_stdio_server.py"],
       "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/client/.env",
       "env": {
         "BLENDER_HOST": "127.0.0.1",
-        "BLENDER_PORT": "9876",
-        "BLENDER_TOKEN": "replace-with-your-token"
+        "BLENDER_PORT": "9876"
       }
     }
   }

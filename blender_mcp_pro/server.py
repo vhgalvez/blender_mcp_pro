@@ -1,4 +1,5 @@
 import hmac
+import json
 import ipaddress
 import logging
 import socket
@@ -9,7 +10,16 @@ import bpy
 
 from .dispatcher import CommandDispatcher
 from . import file_ops
-from .protocol import NDJSONProtocol, ProtocolError, encode_message, make_error, make_result
+from .mcp_tools import build_tool_registry, resolve_tool_name
+from .protocol import (
+    NDJSONProtocol,
+    ProtocolError,
+    encode_message,
+    make_error,
+    make_jsonrpc_error,
+    make_jsonrpc_result,
+    make_result,
+)
 
 
 class BlenderMCPServer:
@@ -21,6 +31,7 @@ class BlenderMCPServer:
         self.socket = None
         self.server_thread = None
         self.dispatcher = CommandDispatcher(addon_module_name, self.call_in_main_thread)
+        self.mcp_tools = build_tool_registry(self.dispatcher)
         self.audit_logger = self._build_audit_logger()
 
     def start(self):
@@ -112,10 +123,10 @@ class BlenderMCPServer:
                     break
 
                 for message in messages:
-                    request_id = message["id"]
+                    request_id = message.get("id")
                     try:
                         if not authenticated:
-                            if message["type"] != "auth":
+                            if message["kind"] != "auth":
                                 raise ProtocolError("not_authenticated", "Authenticate before sending commands", request_id=request_id)
                             if not self._authenticate(message["token"]):
                                 self.audit_logger.warning(
@@ -136,11 +147,9 @@ class BlenderMCPServer:
                             client.sendall(encode_message(make_result(request_id, {"authenticated": True, "host": self.host, "port": self.port})))
                             continue
 
-                        if message["type"] != "command":
-                            raise ProtocolError("invalid_type", "Only command messages are allowed after authentication", request_id=request_id)
-
-                        result = self.dispatcher.dispatch(message["command"], message["params"])
-                        client.sendall(encode_message(make_result(request_id, result)))
+                        response = self._handle_authenticated_message(message)
+                        if response is not None:
+                            client.sendall(encode_message(response))
                     except ProtocolError as exc:
                         self.audit_logger.warning(
                             "client_rejected address=%s port=%s mode=%s request_id=%s reason=%s",
@@ -150,7 +159,10 @@ class BlenderMCPServer:
                             request_id,
                             exc.code,
                         )
-                        client.sendall(encode_message(make_error(exc.request_id or request_id, exc.code, exc.message, exc.details)))
+                        if message.get("kind") == "jsonrpc":
+                            client.sendall(encode_message(make_jsonrpc_error(exc.request_id if exc.request_id is not None else request_id, -32602, exc.message, exc.details)))
+                        else:
+                            client.sendall(encode_message(make_error(exc.request_id or request_id, exc.code, exc.message, exc.details)))
                     except Exception as exc:
                         traceback.print_exc()
                         self.audit_logger.exception(
@@ -160,13 +172,101 @@ class BlenderMCPServer:
                             validation_mode,
                             request_id,
                         )
-                        client.sendall(encode_message(make_error(request_id, "internal_error", str(exc))))
+                        if message.get("kind") == "jsonrpc":
+                            client.sendall(encode_message(make_jsonrpc_error(request_id, -32603, str(exc))))
+                        else:
+                            client.sendall(encode_message(make_error(request_id, "internal_error", str(exc))))
         finally:
             try:
                 client.close()
             except Exception:
                 pass
             self.audit_logger.info("client_disconnected address=%s port=%s mode=%s", address[0], address[1], validation_mode)
+
+    def _handle_authenticated_message(self, message):
+        request_id = message["id"]
+        kind = message["kind"]
+
+        if kind in {"legacy_command", "legacy_direct_command"}:
+            result = self.dispatcher.dispatch(message["command"], message["params"])
+            return make_result(request_id, result)
+
+        if kind != "jsonrpc":
+            raise ProtocolError("invalid_type", "Unsupported message kind after authentication", request_id=request_id)
+
+        method = message["method"]
+        params = message["params"]
+
+        if method == "initialize":
+            return make_jsonrpc_result(
+                request_id,
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "blender-mcp-pro-tcp", "version": "1.0.0"},
+                },
+            )
+
+        if method == "ping":
+            return make_jsonrpc_result(request_id, {})
+
+        if method == "tools/list":
+            tools = [
+                {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "inputSchema": tool["input_schema"],
+                }
+                for tool in self.mcp_tools
+            ]
+            return make_jsonrpc_result(request_id, {"tools": tools})
+
+        if method == "tools/call":
+            requested_name = params.get("name")
+            arguments = params.get("arguments", {})
+            if not isinstance(requested_name, str) or not requested_name:
+                return make_jsonrpc_result(
+                    request_id,
+                    self._mcp_tool_error("missing_tool_name", "Tool name is required."),
+                )
+            if not isinstance(arguments, dict):
+                return make_jsonrpc_result(
+                    request_id,
+                    self._mcp_tool_error("invalid_arguments", "Tool arguments must be an object."),
+                )
+
+            tool = resolve_tool_name(self.dispatcher, requested_name)
+            if tool is None:
+                return make_jsonrpc_result(
+                    request_id,
+                    self._mcp_tool_error("unknown_tool", f"Unknown tool: {requested_name}"),
+                )
+
+            result = self.dispatcher.dispatch(tool["command"], arguments)
+            return make_jsonrpc_result(
+                request_id,
+                {
+                    "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
+                    "structuredContent": result,
+                    "isError": False,
+                },
+            )
+
+        if method == "notifications/initialized":
+            return None
+
+        if method in {"shutdown", "exit"}:
+            return make_jsonrpc_result(request_id, {})
+
+        return make_jsonrpc_error(request_id, -32601, f"Method not found: {method}")
+
+    def _mcp_tool_error(self, code, message):
+        payload = {"error": code, "message": message}
+        return {
+            "content": [{"type": "text", "text": message}],
+            "structuredContent": payload,
+            "isError": True,
+        }
 
     def _authenticate(self, token):
         expected = self._get_auth_token()

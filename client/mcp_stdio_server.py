@@ -178,6 +178,7 @@ class MCPStdioServer:
         custom_titles = {
             "get_scene_info": "Get Scene Info / Info de Escena",
             "get_object_info": "Get Object Info / Info de Objeto",
+            "create_primitive": "Create Primitive / Crear Primitiva",
             "create_prop_blockout": "Create Prop Blockout / Crear Blockout de Prop",
             "create_environment_layout": "Create Environment Layout / Crear Layout de Entorno",
             "load_character_references": "Load Character References / Cargar Referencias",
@@ -185,6 +186,10 @@ class MCPStdioServer:
             "capture_character_review": "Capture Character Review / Capturar Revision",
             "compare_character_with_references": "Compare Character with References / Comparar con Referencias",
             "apply_character_proportion_fixes": "Apply Character Proportion Fixes / Corregir Proporciones",
+            "generate_scene_plan": "Generate Scene Plan / Generar Plan de Escena",
+            "apply_scene_plan": "Apply Scene Plan / Aplicar Plan de Escena",
+            "build_scene_from_description": "Build Scene from Description / Crear Escena desde Descripcion",
+            "build_character_from_description": "Build Character from Description / Crear Personaje desde Descripcion",
         }
         return custom_titles.get(tool["name"], tool["name"].replace("_", " ").title())
 

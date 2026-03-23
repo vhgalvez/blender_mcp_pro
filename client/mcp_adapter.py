@@ -1,12 +1,13 @@
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 from blender_client import BlenderTcpClient
-from tools_registry import CALLABLE_TOOL_NAMES, TOOLS, TOOLS_BY_NAME
+from tools_registry import CALLABLE_TOOL_NAMES, SERVER_TOOL_NAMES, TOOLS, TOOLS_BY_NAME, WORKFLOW_TOOL_NAMES
 
 
 def configure_logging() -> logging.Logger:
@@ -22,11 +23,6 @@ def configure_logging() -> logging.Logger:
 
 LOGGER = configure_logging()
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-LOCAL_WORKFLOW_TOOL_NAMES = {
-    "create_character_from_references",
-    "review_and_fix_character",
-    "create_shop_scene",
-}
 
 
 class BlenderMCPAdapter:
@@ -38,7 +34,7 @@ class BlenderMCPAdapter:
 
     def call_tool(self, tool_name: str, params: dict):
         params = dict(params or {})
-        availability = TOOLS_BY_NAME.get(tool_name, {}).get("availability", "local_workflow" if tool_name in LOCAL_WORKFLOW_TOOL_NAMES else "unknown")
+        availability = TOOLS_BY_NAME.get(tool_name, {}).get("availability", "unknown")
         LOGGER.info(
             "tool_selected %s",
             json.dumps(
@@ -51,13 +47,25 @@ class BlenderMCPAdapter:
             ),
         )
 
-        if tool_name in LOCAL_WORKFLOW_TOOL_NAMES:
+        if tool_name in WORKFLOW_TOOL_NAMES:
             if tool_name == "create_character_from_references":
                 result = self._create_character_from_references(params)
             elif tool_name == "review_and_fix_character":
                 result = self._review_and_fix_character(params)
-            else:
+            elif tool_name == "create_shop_scene":
                 result = self._create_shop_scene(params)
+            elif tool_name == "generate_scene_plan":
+                result = self._generate_scene_plan(params)
+            elif tool_name == "apply_scene_plan":
+                result = self._apply_scene_plan(params)
+            elif tool_name == "build_scene_from_description":
+                result = self._build_scene_from_description(params)
+            elif tool_name == "build_character_from_description":
+                result = self._build_character_from_description(params)
+            elif tool_name == "import_asset":
+                result = self._import_asset(params)
+            else:
+                raise ValueError(f"Unsupported workflow tool: {tool_name}")
         elif tool_name in TOOLS_BY_NAME:
             tool_meta = TOOLS_BY_NAME[tool_name]
             if tool_meta["availability"] == "unavailable":
@@ -103,9 +111,30 @@ class BlenderMCPAdapter:
         if text.startswith("info objeto "):
             return {"tool": "get_object_info", "params": {"name": original[len("info objeto ") :].strip()}}
 
-        if any(phrase in text for phrase in ["create a chair", "create chair", "crea una silla", "crear una silla"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "create a chair",
+                "create chair",
+                "create a chair in blender",
+                "crea una silla",
+                "crear una silla",
+                "crea una silla en blender",
+            ]
+        ):
             return {"tool": "create_prop_blockout", "params": {"prop_type": "chair", "collection_name": "MCP_Chair"}}
-        if any(phrase in text for phrase in ["create a table", "create table", "create prop table", "crea una mesa", "crear una mesa"]):
+        if any(
+            phrase in text
+            for phrase in [
+                "create a table",
+                "create table",
+                "create a table in blender",
+                "create prop table",
+                "crea una mesa",
+                "crear una mesa",
+                "crea una mesa en blender",
+            ]
+        ):
             return {"tool": "create_prop_blockout", "params": {"prop_type": "table", "collection_name": "MCP_Table"}}
 
         if any(
@@ -119,18 +148,7 @@ class BlenderMCPAdapter:
                 "crear un personaje punk",
             ]
         ):
-            return {
-                "tool": "create_character_from_references",
-                "params": {
-                    "reference_dir": "./references",
-                    "height": 1.9,
-                    "spike_count": 11,
-                    "add_piercings": True,
-                    "include_metal": True,
-                    "blockout_collection_name": "MCP_Punk_Character",
-                    "detail_collection_name": "MCP_Punk_Character_Details",
-                },
-            }
+            return {"tool": "build_character_from_description", "params": {"description": original, "style": "stylized punk cartoon"}}
 
         if any(
             phrase in text
@@ -155,6 +173,23 @@ class BlenderMCPAdapter:
             ]
         ):
             return {"tool": "apply_character_proportion_fixes", "params": {"strength": 0.35}}
+
+        if any(
+            phrase in text
+            for phrase in [
+                "create a stylized bedroom",
+                "create a bedroom",
+                "create a room",
+                "create a small shop",
+                "create a shop",
+                "crea una habitación",
+                "crea una habitacion",
+                "crea una tienda",
+                "hazme una tienda",
+                "hazme una habitación",
+            ]
+        ):
+            return {"tool": "build_scene_from_description", "params": {"description": original}}
 
         if any(
             phrase in text
@@ -296,7 +331,7 @@ class BlenderMCPAdapter:
             sys.stdout.flush()
 
     def _call_backend(self, tool_name: str, params: dict[str, Any]):
-        if tool_name not in CALLABLE_TOOL_NAMES:
+        if tool_name not in SERVER_TOOL_NAMES:
             raise ValueError(f"Tool is not implemented on the Blender server: {tool_name}")
         normalized = self._normalize_params(tool_name, params)
         LOGGER.info(
@@ -336,6 +371,183 @@ class BlenderMCPAdapter:
             params.setdefault("mode", "environment")
 
         return params
+
+    def _generate_scene_plan(self, params: dict[str, Any]):
+        description = str(params.get("description", "")).strip()
+        style = str(params.get("style", "")).strip() or "default"
+        if not description:
+            raise ValueError("description is required")
+
+        text = description.lower()
+        plan = {
+            "description": description,
+            "style": style,
+            "environment": None,
+            "props": [],
+            "primitives": [],
+            "materials": [],
+            "lights": [],
+            "camera": None,
+            "limitations": [],
+        }
+
+        if any(keyword in text for keyword in ["shop", "tienda", "store"]):
+            plan["environment"] = {"layout_type": "shop", "collection_name": "MCP_Generated_Shop"}
+        elif any(keyword in text for keyword in ["bedroom", "room", "habitación", "habitacion", "cuarto", "dormitorio"]):
+            plan["environment"] = {"layout_type": "room", "collection_name": "MCP_Generated_Room"}
+        elif any(keyword in text for keyword in ["corridor", "hallway", "pasillo"]):
+            plan["environment"] = {"layout_type": "corridor", "collection_name": "MCP_Generated_Corridor"}
+
+        if "chair" in text or "silla" in text:
+            plan["props"].append({"prop_type": "chair", "collection_name": "MCP_Generated_Props"})
+        if "table" in text or "mesa" in text or "desk" in text or "escritorio" in text:
+            plan["props"].append({"prop_type": "table", "collection_name": "MCP_Generated_Props"})
+        if "crate" in text or "caja" in text:
+            plan["props"].append({"prop_type": "crate", "collection_name": "MCP_Generated_Props"})
+        if "weapon" in text or "sword" in text or "arma" in text:
+            plan["props"].append({"prop_type": "weapon", "collection_name": "MCP_Generated_Props"})
+        if "plane" in text or "airplane" in text or "avión" in text or "avion" in text:
+            plan["props"].append({"prop_type": "plane", "collection_name": "MCP_Generated_Props"})
+
+        if "lamp" in text or "lámpara" in text or "lampara" in text:
+            plan["lights"].append({"light_type": "POINT", "name": "MCP_Lamp", "location": [2.0, -2.0, 3.0], "energy": 1500.0})
+        if "sunset" in text or "atardecer" in text:
+            plan["lights"].append({"light_type": "SUN", "name": "MCP_Sunset_Sun", "rotation": [0.9, 0.0, 0.6], "energy": 2.5, "color": [1.0, 0.65, 0.45]})
+        elif not plan["lights"]:
+            plan["lights"].append({"light_type": "SUN", "name": "MCP_Key_Sun", "rotation": [0.9, 0.0, 0.8], "energy": 2.0, "color": [1.0, 0.95, 0.9]})
+
+        if "bed" in text or "cama" in text:
+            plan["primitives"].extend(
+                [
+                    {"primitive_type": "cube", "name": "MCP_Bed_Base", "location": [0.0, -0.6, 0.25], "scale": [1.2, 2.0, 0.25]},
+                    {"primitive_type": "cube", "name": "MCP_Bed_Headboard", "location": [0.0, -1.6, 0.8], "scale": [1.2, 0.08, 0.8]},
+                ]
+            )
+        if "shelf" in text or "estantería" in text or "estanteria" in text:
+            plan["primitives"].append({"primitive_type": "cube", "name": "MCP_Shelf_Block", "location": [2.0, -1.5, 1.0], "scale": [0.25, 0.9, 1.0]})
+        if "counter" in text or "mostrador" in text:
+            plan["primitives"].append({"primitive_type": "cube", "name": "MCP_Counter_Block", "location": [0.0, 1.2, 0.6], "scale": [1.5, 0.4, 0.6]})
+
+        plan["camera"] = {"name": "MCP_Camera", "location": [7.0, -7.0, 5.0], "rotation": [1.0, 0.0, 0.8], "lens": 45.0, "make_active": True}
+
+        if plan["environment"] is None and not plan["props"] and not plan["primitives"]:
+            return {
+                "error": "tool_not_implemented",
+                "message": "The description could not be mapped to the current safe scene-building tools.",
+                "suggestions": [
+                    "Try asking for a room, shop, corridor, chair, table, bed, shelf, counter, lamp, or sunset lighting.",
+                ],
+            }
+
+        if "street" in text or "calle" in text:
+            plan["limitations"].append("Street scenes are not implemented as a dedicated layout; corridor is the closest supported layout.")
+
+        return {"success": True, "plan": plan}
+
+    def _apply_scene_plan(self, params: dict[str, Any]):
+        plan = params.get("plan")
+        if not isinstance(plan, dict):
+            raise ValueError("plan must be an object")
+
+        steps = []
+
+        environment = plan.get("environment")
+        if environment:
+            steps.append({"tool": "create_environment_layout", "result": self._call_backend("create_environment_layout", environment)})
+            steps.append({"tool": "apply_environment_materials", "result": self._call_backend("apply_environment_materials", {})})
+
+        for prop in plan.get("props", []):
+            steps.append({"tool": "create_prop_blockout", "result": self._call_backend("create_prop_blockout", prop)})
+
+        if plan.get("props"):
+            steps.append({"tool": "apply_prop_materials", "result": self._call_backend("apply_prop_materials", {"include_metal": False})})
+
+        for primitive in plan.get("primitives", []):
+            steps.append({"tool": "create_primitive", "result": self._call_backend("create_primitive", primitive)})
+
+        for light in plan.get("lights", []):
+            steps.append({"tool": "create_light", "result": self._call_backend("create_light", light)})
+
+        camera = plan.get("camera")
+        if camera:
+            steps.append({"tool": "set_camera", "result": self._call_backend("set_camera", camera)})
+
+        return {
+            "workflow": "apply_scene_plan",
+            "description": plan.get("description", ""),
+            "style": plan.get("style", ""),
+            "limitations": plan.get("limitations", []),
+            "steps": steps,
+        }
+
+    def _build_scene_from_description(self, params: dict[str, Any]):
+        generated = self._generate_scene_plan(params)
+        if generated.get("error"):
+            return generated
+        return self._apply_scene_plan({"plan": generated["plan"]})
+
+    def _build_character_from_description(self, params: dict[str, Any]):
+        description = str(params.get("description", "")).strip()
+        style = str(params.get("style", "")).strip() or "stylized"
+        if not description:
+            raise ValueError("description is required")
+
+        text = description.lower()
+        spike_count = 11 if "punk" in text or "spiky" in text or "pinchos" in text else 7
+        height = 1.9 if "big head" in text or "cabeza grande" in text else 1.8
+        include_metal = any(keyword in text for keyword in ["punk", "metal", "chain", "cadena"])
+        add_piercings = any(keyword in text for keyword in ["piercing", "piercings", "punk"])
+
+        steps = [
+            {"tool": "create_character_blockout", "result": self._call_backend("create_character_blockout", {"height": height, "collection_name": "MCP_Generated_Character"})},
+            {"tool": "build_character_hair", "result": self._call_backend("build_character_hair", {"spike_count": spike_count, "collection_name": "MCP_Generated_Character_Details"})},
+            {"tool": "build_character_face", "result": self._call_backend("build_character_face", {"add_piercings": add_piercings, "collection_name": "MCP_Generated_Character_Details"})},
+            {"tool": "apply_character_materials", "result": self._call_backend("apply_character_materials", {"include_metal": include_metal})},
+        ]
+
+        if any(keyword in text for keyword in ["thin limbs", "thin arms", "thin legs", "extremidades finas", "brazos delgados", "piernas delgadas"]):
+            steps.append({"tool": "apply_character_proportion_fixes", "result": self._call_backend("apply_character_proportion_fixes", {"deltas": {"arm_thickness": {"delta": -0.18}, "leg_thickness": {"delta": -0.15}}, "strength": 0.7})})
+
+        return {
+            "workflow": "build_character_from_description",
+            "description": description,
+            "style": style,
+            "limitations": ["This builds a stylized procedural character blockout; it does not perform automatic image-to-3D reconstruction."],
+            "steps": steps,
+        }
+
+    def _import_asset(self, params: dict[str, Any]):
+        source = params.get("source")
+        if source == "polyhaven":
+            required = {"asset_id", "asset_type"}
+            missing = sorted(name for name in required if not params.get(name))
+            if missing:
+                raise ValueError(f"Missing required params for polyhaven import_asset: {missing}")
+            return self._call_backend(
+                "download_polyhaven_asset",
+                {
+                    "asset_id": params["asset_id"],
+                    "asset_type": params["asset_type"],
+                    "resolution": params.get("resolution"),
+                    "file_format": params.get("file_format"),
+                },
+            )
+        if source == "sketchfab":
+            if not params.get("uid"):
+                raise ValueError("Missing required param for sketchfab import_asset: uid")
+            return self._call_backend(
+                "download_sketchfab_model",
+                {
+                    "uid": params["uid"],
+                    "normalize_size": bool(params.get("normalize_size", False)),
+                    "target_size": float(params.get("target_size", 1.0)),
+                },
+            )
+        return {
+            "error": "tool_not_implemented",
+            "message": f"Unsupported asset source: {source}",
+            "suggestions": ["polyhaven", "sketchfab"],
+        }
 
     def _create_character_from_references(self, params: dict[str, Any]):
         reference_paths = self._resolve_reference_inputs(params)

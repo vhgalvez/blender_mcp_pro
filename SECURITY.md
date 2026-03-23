@@ -39,6 +39,7 @@ The current implementation does not attempt to defend against a fully compromise
 - No command message is accepted before authentication succeeds.
 - Auth failures are audit-logged without logging the token itself.
 - The token is stored in add-on preferences, not scene properties.
+- The recommended VS Code setup loads client-side connection settings from `client/.env` via `.vscode/mcp.json` instead of hardcoding the token in workspace config.
 
 ## File Access Restrictions
 
@@ -62,6 +63,7 @@ The current implementation does not attempt to defend against a fully compromise
 ## Protocol Restrictions
 
 - The transport is NDJSON only.
+- The production Copilot path is stdio MCP in `client/mcp_stdio_server.py`, which bridges into the authenticated TCP backend.
 - Every message must include a non-empty string request id.
 - Malformed JSON, invalid UTF-8, oversized messages, and unsupported fields are rejected with structured error codes.
 - Unknown commands and invalid params are rejected.

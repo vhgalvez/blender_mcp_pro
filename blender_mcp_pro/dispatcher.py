@@ -15,6 +15,7 @@ class SceneModeTools:
     PROP_SYMMETRY_NAME = "PROP_Symmetry_Center"
     ENV_COLLECTION_NAME = "ENV_Layout"
     ENV_ROOT_NAME = "ENV_Root"
+    PRIMITIVE_COLLECTION_NAME = "MCP_Primitives"
 
     def _ensure_collection(self, name):
         collection = bpy.data.collections.get(name)
@@ -53,6 +54,13 @@ class SceneModeTools:
         obj.data.materials.clear()
         obj.data.materials.append(material)
 
+    def _vector3(self, values, default):
+        if values is None:
+            return default
+        if not isinstance(values, (list, tuple)) or len(values) != 3:
+            raise ValueError("Expected a list of three numbers")
+        return tuple(float(value) for value in values)
+
     def _get_or_create_material(self, name, base_color, metallic=0.0, roughness=0.6):
         material = bpy.data.materials.get(name)
         if material is None:
@@ -69,6 +77,119 @@ class SceneModeTools:
         principled.inputs["Metallic"].default_value = metallic
         principled.inputs["Roughness"].default_value = roughness
         return material
+
+    def create_primitive(self, primitive_type, name=None, collection_name=None, location=None, rotation=None, scale=None):
+        collection = self._ensure_collection(collection_name or self.PRIMITIVE_COLLECTION_NAME)
+        location = self._vector3(location, (0.0, 0.0, 0.0))
+        rotation = self._vector3(rotation, (0.0, 0.0, 0.0))
+        scale = self._vector3(scale, (1.0, 1.0, 1.0))
+
+        match primitive_type:
+            case "cube":
+                bpy.ops.mesh.primitive_cube_add(location=location, rotation=rotation)
+            case "sphere":
+                bpy.ops.mesh.primitive_uv_sphere_add(location=location, rotation=rotation)
+            case "cylinder":
+                bpy.ops.mesh.primitive_cylinder_add(location=location, rotation=rotation)
+            case "cone":
+                bpy.ops.mesh.primitive_cone_add(location=location, rotation=rotation)
+            case "plane":
+                bpy.ops.mesh.primitive_plane_add(location=location, rotation=rotation)
+            case _:
+                raise ValueError("primitive_type must be one of cube, sphere, cylinder, cone, plane")
+
+        obj = bpy.context.active_object
+        obj.scale = scale
+        if name:
+            obj.name = name
+        self._link_only_to_collection(obj, collection)
+        bpy.context.view_layer.update()
+        return {
+            "success": True,
+            "primitive_type": primitive_type,
+            "name": obj.name,
+            "collection": collection.name,
+            "location": [obj.location.x, obj.location.y, obj.location.z],
+            "rotation": [obj.rotation_euler.x, obj.rotation_euler.y, obj.rotation_euler.z],
+            "scale": [obj.scale.x, obj.scale.y, obj.scale.z],
+        }
+
+    def move_object(self, name, location):
+        obj = bpy.data.objects.get(name)
+        if obj is None:
+            raise ValueError(f"Object not found: {name}")
+        obj.location = self._vector3(location, (0.0, 0.0, 0.0))
+        bpy.context.view_layer.update()
+        return {"success": True, "name": obj.name, "location": [obj.location.x, obj.location.y, obj.location.z]}
+
+    def rotate_object(self, name, rotation):
+        obj = bpy.data.objects.get(name)
+        if obj is None:
+            raise ValueError(f"Object not found: {name}")
+        obj.rotation_euler = self._vector3(rotation, (0.0, 0.0, 0.0))
+        bpy.context.view_layer.update()
+        return {"success": True, "name": obj.name, "rotation": [obj.rotation_euler.x, obj.rotation_euler.y, obj.rotation_euler.z]}
+
+    def scale_object(self, name, scale):
+        obj = bpy.data.objects.get(name)
+        if obj is None:
+            raise ValueError(f"Object not found: {name}")
+        obj.scale = self._vector3(scale, (1.0, 1.0, 1.0))
+        bpy.context.view_layer.update()
+        return {"success": True, "name": obj.name, "scale": [obj.scale.x, obj.scale.y, obj.scale.z]}
+
+    def apply_material(self, object_name, material_name=None, base_color=None, metallic=0.0, roughness=0.6):
+        obj = bpy.data.objects.get(object_name)
+        if obj is None or obj.type != "MESH":
+            raise ValueError(f"Mesh object not found: {object_name}")
+        if base_color is None:
+            base_color = [0.8, 0.8, 0.8]
+        if not isinstance(base_color, (list, tuple)) or len(base_color) != 3:
+            raise ValueError("base_color must be a list of three numbers")
+        material = self._get_or_create_material(
+            material_name or f"MCP_Mat_{object_name}",
+            tuple(float(component) for component in base_color),
+            metallic=float(metallic),
+            roughness=float(roughness),
+        )
+        self._assign_material(obj, material)
+        bpy.context.view_layer.update()
+        return {"success": True, "object_name": obj.name, "material": material.name}
+
+    def create_light(self, light_type="POINT", name=None, location=None, rotation=None, energy=1000.0, color=None):
+        location = self._vector3(location, (4.0, -4.0, 6.0))
+        rotation = self._vector3(rotation, (0.8, 0.0, 0.8))
+        if color is None:
+            color = [1.0, 1.0, 1.0]
+        if not isinstance(color, (list, tuple)) or len(color) != 3:
+            raise ValueError("color must be a list of three numbers")
+        bpy.ops.object.light_add(type=light_type, location=location, rotation=rotation)
+        obj = bpy.context.active_object
+        if name:
+            obj.name = name
+            obj.data.name = f"{name}_Data"
+        obj.data.energy = float(energy)
+        obj.data.color = tuple(float(component) for component in color)
+        bpy.context.view_layer.update()
+        return {"success": True, "name": obj.name, "light_type": obj.data.type, "energy": obj.data.energy}
+
+    def set_camera(self, name="MCP_Camera", location=None, rotation=None, lens=50.0, make_active=True):
+        location = self._vector3(location, (7.0, -7.0, 5.0))
+        rotation = self._vector3(rotation, (1.0, 0.0, 0.8))
+        camera = bpy.data.objects.get(name)
+        if camera is None or camera.type != "CAMERA":
+            bpy.ops.object.camera_add(location=location, rotation=rotation)
+            camera = bpy.context.active_object
+            camera.name = name
+            camera.data.name = f"{name}_Data"
+        else:
+            camera.location = location
+            camera.rotation_euler = rotation
+        camera.data.lens = float(lens)
+        if make_active:
+            bpy.context.scene.camera = camera
+        bpy.context.view_layer.update()
+        return {"success": True, "name": camera.name, "lens": camera.data.lens, "active": bpy.context.scene.camera == camera}
 
     def create_prop_blockout(self, prop_type, collection_name=None):
         collection = self._ensure_collection(collection_name or self.PROP_COLLECTION_NAME)
@@ -114,8 +235,14 @@ class SceneModeTools:
                 add_cube("PROP_Weapon_Guard", (0.0, 0.0, 0.82), (0.28, 0.06, 0.05))
                 add_cube("PROP_Weapon_Blade", (0.0, 0.0, 1.38), (0.08, 0.03, 0.56))
                 add_cube("PROP_Weapon_Pommel", (0.0, 0.0, 0.02), (0.11, 0.11, 0.08))
+            case "plane":
+                # Simple airplane: body, wings, tail, nose
+                add_cube("PROP_Plane_Body", (0.0, 0.0, 0.5), (0.7, 0.12, 0.12))
+                add_cube("PROP_Plane_Wing", (0.0, 0.0, 0.5), (0.18, 1.0, 0.04))
+                add_cube("PROP_Plane_Tail", (-0.32, 0.0, 0.62), (0.12, 0.28, 0.04))
+                add_cube("PROP_Plane_Nose", (0.38, 0.0, 0.5), (0.12, 0.12, 0.12))
             case _:
-                raise ValueError("prop_type must be one of chair, table, crate, weapon")
+                raise ValueError("prop_type must be one of chair, table, crate, weapon, plane")
 
         bpy.context.view_layer.update()
         return {"success": True, "mode": "props", "prop_type": prop_type, "collection": collection.name, "root": root.name, "objects": created}
@@ -405,6 +532,61 @@ class CommandDispatcher:
     def cmd_get_telemetry_consent(self):
         prefs = self._get_prefs()
         return {"consent": prefs["telemetry_consent"]}
+
+    def cmd_create_primitive(self, primitive_type, name=None, collection_name=None, location=None, rotation=None, scale=None):
+        return self.main_thread_call(
+            lambda: self.scene_mode_tools.create_primitive(
+                primitive_type=primitive_type,
+                name=name,
+                collection_name=collection_name,
+                location=location,
+                rotation=rotation,
+                scale=scale,
+            )
+        )
+
+    def cmd_move_object(self, name, location):
+        return self.main_thread_call(lambda: self.scene_mode_tools.move_object(name=name, location=location))
+
+    def cmd_rotate_object(self, name, rotation):
+        return self.main_thread_call(lambda: self.scene_mode_tools.rotate_object(name=name, rotation=rotation))
+
+    def cmd_scale_object(self, name, scale):
+        return self.main_thread_call(lambda: self.scene_mode_tools.scale_object(name=name, scale=scale))
+
+    def cmd_apply_material(self, object_name, material_name=None, base_color=None, metallic=0.0, roughness=0.6):
+        return self.main_thread_call(
+            lambda: self.scene_mode_tools.apply_material(
+                object_name=object_name,
+                material_name=material_name,
+                base_color=base_color,
+                metallic=metallic,
+                roughness=roughness,
+            )
+        )
+
+    def cmd_create_light(self, light_type="POINT", name=None, location=None, rotation=None, energy=1000.0, color=None):
+        return self.main_thread_call(
+            lambda: self.scene_mode_tools.create_light(
+                light_type=light_type,
+                name=name,
+                location=location,
+                rotation=rotation,
+                energy=energy,
+                color=color,
+            )
+        )
+
+    def cmd_set_camera(self, name="MCP_Camera", location=None, rotation=None, lens=50.0, make_active=True):
+        return self.main_thread_call(
+            lambda: self.scene_mode_tools.set_camera(
+                name=name,
+                location=location,
+                rotation=rotation,
+                lens=lens,
+                make_active=make_active,
+            )
+        )
 
     def cmd_get_polyhaven_status(self):
         flags = self._get_scene_flags()
