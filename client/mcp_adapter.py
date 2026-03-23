@@ -28,21 +28,63 @@ def send_to_blender(command, params):
             "params": params
         }) + "\n").encode())
 
-        response = s.recv(4096).decode()
-        return response
+        return s.recv(4096).decode()
 
 
-def handle_request(req):
-    name = req.get("name")
-    args = req.get("arguments", {})
+def send(msg):
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
 
-    if name == "create_chair":
-        return send_to_blender("create_prop_blockout", {
-            "prop_type": "chair",
-            "mode": "props"
+
+def handle_message(msg):
+    msg_type = msg.get("type")
+
+    # 🔹 MCP handshake
+    if msg_type == "initialize":
+        send({
+            "type": "initialize",
+            "result": {
+                "name": "blender-mcp",
+                "version": "1.0"
+            }
         })
 
-    return json.dumps({"error": "unknown tool"})
+    # 🔹 declarar tools
+    elif msg_type == "tools/list":
+        send({
+            "type": "tools/list",
+            "result": [
+                {
+                    "name": "create_chair",
+                    "description": "Create a chair in Blender",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            ]
+        })
+
+    # 🔹 ejecutar tool
+    elif msg_type == "tools/call":
+        name = msg["name"]
+
+        if name == "create_chair":
+            result = send_to_blender("create_prop_blockout", {
+                "prop_type": "chair",
+                "mode": "props"
+            })
+
+            send({
+                "type": "tools/call",
+                "result": result
+            })
+
+        else:
+            send({
+                "type": "error",
+                "message": "Unknown tool"
+            })
 
 
 def main():
@@ -51,12 +93,14 @@ def main():
         if not line:
             break
 
-        req = json.loads(line)
-
-        result = handle_request(req)
-
-        sys.stdout.write(result + "\n")
-        sys.stdout.flush()
+        try:
+            msg = json.loads(line)
+            handle_message(msg)
+        except Exception as e:
+            send({
+                "type": "error",
+                "message": str(e)
+            })
 
 
 if __name__ == "__main__":
